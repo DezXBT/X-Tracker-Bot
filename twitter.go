@@ -117,24 +117,15 @@ func (tc *TwitterClient) getHeaders() http.Header {
 	h.Set("x-twitter-client-language", "en")
 	h.Set("accept", "*/*")
 	h.Set("accept-language", "en-US,en;q=0.9")
-	h.Set("x-client-transaction-id", generateTransactionID())
 	return h
 }
 
-func generateTransactionID() string {
-	var ts [8]byte
-	binary.BigEndian.PutUint64(ts[:], uint64(time.Now().UnixMilli()))
-	tsB64 := base64.RawURLEncoding.EncodeToString(ts[:])
-
-	randPart := make([]byte, 16)
+// fallbackTransactionID generates a basic random transaction ID when
+// the real generator is unavailable. X requires the header on every request.
+func fallbackTransactionID() string {
+	randPart := make([]byte, 32)
 	rand.Read(randPart)
-	randB64 := base64.RawURLEncoding.EncodeToString(randPart)
-
-	checkPart := make([]byte, 8)
-	rand.Read(checkPart)
-	checkB64 := base64.RawURLEncoding.EncodeToString(checkPart)
-
-	return tsB64 + randB64 + checkB64
+	return base64.RawURLEncoding.EncodeToString(randPart)
 }
 
 // GetUser fetches a user profile by screen name.
@@ -212,6 +203,17 @@ func (tc *TwitterClient) graphql(operationName string, variables map[string]inte
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header = tc.getHeaders()
+
+	// Add X-Client-Transaction-Id based on actual request method and path
+	if TxGen != nil {
+		txID := Generate(req.Method, req.URL.Path)
+		if txID != "" {
+			req.Header.Set("x-client-transaction-id", txID)
+		}
+	}
+	if req.Header.Get("x-client-transaction-id") == "" {
+		req.Header.Set("x-client-transaction-id", fallbackTransactionID())
+	}
 
 	resp, err := tc.client.Do(req)
 	if err != nil {

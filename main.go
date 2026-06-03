@@ -65,6 +65,12 @@ func main() {
 	logInfo("cookie pool: %d", len(cfg.Twitter.Cookies))
 	logInfo("webhooks: %d", len(cfg.Discord.RawWebhooks))
 
+	// Initialize X-Client-Transaction-Id generator (fetches x.com + ondemand JS).
+	// Non-fatal: if it fails we fall back to random transaction IDs.
+	if err := Init(); err != nil {
+		logWarn("X-Client-Transaction-Id init failed: %v (continuing without)", err)
+	}
+
 	// Create tracker
 	tracker := NewTracker(cfg, accounts, state, eventsPath, statePath)
 
