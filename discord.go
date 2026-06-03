@@ -64,14 +64,14 @@ func (dw *DiscordWebhook) SendFollowAlert(webhookURLs []string, watcher, targetS
 	}
 
 	embed := webhookEmbed{
-		Color: 0x561e08,
+		Color: 0xFFD700,
 		Description: fmt.Sprintf("[@%s](%s) just followed [%s](%s)", watcher, watcherLink, targetScreen, targetLink),
 		Fields: []webhookField{
 			{Name: "Followers", Value: followerText, Inline: true},
 			{Name: "Bio", Value: cleanBio},
 		},
 		Footer: &webhookFooter{
-			Text: fmt.Sprintf("Detected by EARLY-TRACKING | %s", time.Now().In(loc).Format("1/2/2006, 3:04:05 PM") + " WIB"),
+			Text: fmt.Sprintf("Detected by X-Tracker-Bot | %s WIB", time.Now().In(loc).Format("02/01/2006, 15:04:05")),
 		},
 	}
 
