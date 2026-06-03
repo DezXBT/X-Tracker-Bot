@@ -63,6 +63,17 @@ func (s *State) MakePairKey(watcher, target string) string {
 	return strings.ToLower(watcher) + "=>" + strings.ToLower(target)
 }
 
+// PrunePairs drops SentPairs entries older than maxAge so the map (and the
+// persisted state file) cannot grow without bound on long-running instances.
+func (s *State) PrunePairs(maxAge time.Duration) {
+	cutoff := time.Now().Add(-maxAge).UnixMilli()
+	for k, ts := range s.SentPairs {
+		if ts < cutoff {
+			delete(s.SentPairs, k)
+		}
+	}
+}
+
 func AppendEvent(eventsPath string, event Event) error {
 	dir := filepath.Dir(eventsPath)
 	os.MkdirAll(dir, 0755)

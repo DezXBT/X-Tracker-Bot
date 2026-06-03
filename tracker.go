@@ -2,21 +2,26 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
 
+// sentPairTTL bounds how long a watcher=>target alert is remembered so the
+// SentPairs map (and state.json) cannot grow without limit.
+const sentPairTTL = 30 * 24 * time.Hour
+
 // Tracker manages the follow tracking loop.
 type Tracker struct {
-	cfg       *Config
-	state     *State
-	clients   []*TwitterClient
-	webhook   *DiscordWebhook
-	accounts  []string
+	cfg        *Config
+	state      *State
+	clients    []*TwitterClient
+	webhook    *DiscordWebhook
+	accounts   []string
 	eventsPath string
 	statePath  string
 	cookieIdx  int
-	mu        sync.Mutex
+	mu         sync.Mutex
 }
 
 func NewTracker(cfg *Config, accounts []string, state *State, eventsPath, statePath string) *Tracker {
@@ -45,28 +50,45 @@ func (t *Tracker) nextClient() *TwitterClient {
 	return c
 }
 
-// getClientWithRetry tries all clients, skipping auth failures.
-func (t *Tracker) getClientForOp() (*TwitterClient, error) {
-	n := len(t.clients)
-	start := t.cookieIdx
-	for i := 0; i < n; i++ {
-		idx := (start + i) % n
-		return t.clients[idx], nil
+// getUserWithRetry fetches a user profile, rotating across all clients on auth
+// errors so a single expired cookie does not abort the scan.
+func (t *Tracker) getUserWithRetry(handle string) (*User, error) {
+	var lastErr error
+	for i := 0; i < len(t.clients); i++ {
+		user, err := t.nextClient().GetUser(handle)
+		if err == nil {
+			return user, nil
+		}
+		lastErr = err
+		if !isAuthError(err) {
+			return nil, err
+		}
+		logWarn("[client] auth error on GetUser %s, rotating: %v", handle, err)
 	}
-	return nil, fmt.Errorf("no clients available")
+	return nil, fmt.Errorf("all clients failed for GetUser %s: %w", handle, lastErr)
 }
 
-func (t *Tracker) rotateClient() {
-	t.mu.Lock()
-	t.cookieIdx = (t.cookieIdx + 1) % len(t.clients)
-	t.mu.Unlock()
+// getFollowingWithRetry fetches one following page, rotating across all clients
+// on auth errors.
+func (t *Tracker) getFollowingWithRetry(userID string, count int, cursor string) (*PaginatedResult, error) {
+	var lastErr error
+	for i := 0; i < len(t.clients); i++ {
+		result, err := t.nextClient().GetFollowing(userID, count, cursor)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !isAuthError(err) {
+			return nil, err
+		}
+		logWarn("[client] auth error on GetFollowing, rotating: %v", err)
+	}
+	return nil, fmt.Errorf("all clients failed for GetFollowing: %w", lastErr)
 }
 
-// fetchFollowingMap fetches the full following map for a watcher using all available pages.
+// fetchFollowingMap fetches the following map for a watcher using all available pages.
 func (t *Tracker) fetchFollowingMap(watcher string) (map[string]User, error) {
-	// First get user ID
-	client := t.nextClient()
-	user, err := client.GetUser(watcher)
+	user, err := t.getUserWithRetry(watcher)
 	if err != nil {
 		return nil, fmt.Errorf("get user %s: %w", watcher, err)
 	}
@@ -75,24 +97,13 @@ func (t *Tracker) fetchFollowingMap(watcher string) (map[string]User, error) {
 	var cursor string
 
 	for page := 0; page < t.cfg.Tracking.MaxPages; page++ {
-		client = t.nextClient()
-		result, err := client.GetFollowing(user.RestID, t.cfg.Tracking.PageSize, cursor)
+		result, err := t.getFollowingWithRetry(user.RestID, t.cfg.Tracking.PageSize, cursor)
 		if err != nil {
-			// Try next client on auth errors
-			if isAuthError(err) {
-				t.rotateClient()
-				client = t.nextClient()
-				result, err = client.GetFollowing(user.RestID, t.cfg.Tracking.PageSize, cursor)
-				if err != nil {
-					return nil, fmt.Errorf("get following page %d: %w", page+1, err)
-				}
-			} else {
-				return nil, fmt.Errorf("get following page %d: %w", page+1, err)
-			}
+			return nil, fmt.Errorf("get following page %d: %w", page+1, err)
 		}
 
 		for _, u := range result.Items {
-			followingMap[toLowerCase(u.ScreenName)] = u
+			followingMap[strings.ToLower(u.ScreenName)] = u
 		}
 
 		if !result.HasMore || result.Cursor == "" {
@@ -118,7 +129,7 @@ func (t *Tracker) Warmup() {
 		for k := range m {
 			keys = append(keys, k)
 		}
-		t.state.ByWatcher[toLowerCase(watcher)] = keys
+		t.state.ByWatcher[strings.ToLower(watcher)] = keys
 		logInfo("[warmup] @%s baseline size=%d", watcher, len(m))
 		time.Sleep(300 * time.Millisecond)
 	}
@@ -136,7 +147,7 @@ func (t *Tracker) ScanOnce() {
 			continue
 		}
 
-		previous := toSet(t.state.ByWatcher[toLowerCase(watcher)])
+		previous := toSet(t.state.ByWatcher[strings.ToLower(watcher)])
 		current := make(map[string]bool)
 		for k := range followingMap {
 			current[k] = true
@@ -153,7 +164,7 @@ func (t *Tracker) ScanOnce() {
 		}
 
 		for _, target := range targetsToCheck {
-			targetLower := toLowerCase(target)
+			targetLower := strings.ToLower(target)
 			if !current[targetLower] {
 				continue
 			}
@@ -194,16 +205,17 @@ func (t *Tracker) ScanOnce() {
 		}
 
 		// Update baseline
-		t.state.ByWatcher[toLowerCase(watcher)] = mapKeys(current)
+		t.state.ByWatcher[strings.ToLower(watcher)] = mapKeys(current)
 		time.Sleep(300 * time.Millisecond)
 	}
+	t.state.PrunePairs(sentPairTTL)
 	t.state.Save(t.statePath)
 }
 
 func toSet(items []string) map[string]bool {
 	s := make(map[string]bool, len(items))
 	for _, v := range items {
-		s[toLowerCase(v)] = true
+		s[strings.ToLower(v)] = true
 	}
 	return s
 }
@@ -216,32 +228,9 @@ func mapKeys(m map[string]bool) []string {
 	return keys
 }
 
-func toLowerCase(s string) string {
-	result := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 32
-		}
-		result[i] = c
-	}
-	return string(result)
-}
-
 func isAuthError(err error) bool {
-	msg := err.Error()
-	return contains(msg, "unauthorized") || contains(msg, "could not authenticate") || contains(msg, "401")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
-}
-
-func containsSubstr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unauthorized") ||
+		strings.Contains(msg, "could not authenticate") ||
+		strings.Contains(msg, "401")
 }

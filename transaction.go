@@ -199,6 +199,15 @@ func (tg *TransactionGenerator) computeAnimationKey(html string) (string, error)
 		return "", fmt.Errorf("parse SVG frames: %w", err)
 	}
 
+	// All key-byte indices below come from remote (HTML/JS) data, so validate
+	// every access to avoid an index-out-of-range panic during init.
+	if len(tg.keyBytes) <= 5 {
+		return "", fmt.Errorf("key bytes too short: %d", len(tg.keyBytes))
+	}
+	if tg.rowIndex >= len(tg.keyBytes) {
+		return "", fmt.Errorf("row index %d out of range for %d key bytes", tg.rowIndex, len(tg.keyBytes))
+	}
+
 	frameIndex := tg.keyBytes[5] % 4
 	selectedFrame, ok := svgFrames[frameIndex]
 	if !ok {
@@ -213,6 +222,9 @@ func (tg *TransactionGenerator) computeAnimationKey(html string) (string, error)
 	// frameTime = product of (keyBytes[idx] % 16 for idx in keyBytesIndices)
 	frameTime := 1
 	for _, idx := range tg.keyBytesIndices {
+		if idx >= len(tg.keyBytes) {
+			return "", fmt.Errorf("key byte index %d out of range for %d key bytes", idx, len(tg.keyBytes))
+		}
 		frameTime *= tg.keyBytes[idx] % 16
 	}
 
@@ -221,6 +233,10 @@ func (tg *TransactionGenerator) computeAnimationKey(html string) (string, error)
 	targetTime := float64(frameTimeF) / 4096.0
 
 	frameRow := selectedFrame[rowIdx]
+	// animate() reads frameRow[0..6] and frameRow[7:]; ensure it is long enough.
+	if len(frameRow) < 7 {
+		return "", fmt.Errorf("frame row %d has too few values: %d", rowIdx, len(frameRow))
+	}
 
 	return animate(frameRow, targetTime), nil
 }
@@ -269,9 +285,13 @@ func parseSVGFrames(html string) (map[int][][]int, error) {
 }
 
 // extractIntegers extracts all integer values from a string segment.
+//
+// Matches the reference implementation (re.sub(r"[^\d]+", " ", item)): every
+// non-digit character — including minus signs — is treated as a separator, so
+// all parsed numbers are non-negative. Keeping minus signs here would change
+// the frame data and produce a different (wrong) animation key.
 func extractIntegers(s string) []int {
-	// Replace all non-digit characters (except minus) with spaces
-	re := regexp.MustCompile(`[^0-9\-]+`)
+	re := regexp.MustCompile(`[^0-9]+`)
 	cleaned := re.ReplaceAllString(s, " ")
 	cleaned = strings.TrimSpace(cleaned)
 	if cleaned == "" {
@@ -325,7 +345,9 @@ func animate(frames []int, targetTime float64) string {
 	// Build string array
 	var parts []string
 
-	// First 3 color components as hex (clamp 0-255)
+	// First 3 color components as hex (clamp 0-255, then round).
+	// The reference uses format(round(value), 'x') — Python's round() is
+	// round-half-to-even, so use math.RoundToEven (not truncation) to match.
 	for i := 0; i < 3; i++ {
 		c := color[i]
 		if c < 0 {
@@ -334,7 +356,7 @@ func animate(frames []int, targetTime float64) string {
 		if c > 255 {
 			c = 255
 		}
-		parts = append(parts, fmt.Sprintf("%x", int(c)))
+		parts = append(parts, fmt.Sprintf("%x", int(math.RoundToEven(c))))
 	}
 
 	// 4 matrix values
@@ -447,27 +469,48 @@ func NewCubic(curves [4]float64) *Cubic {
 }
 
 // GetValue returns the y value of the Bézier curve at the given time (x value).
-// Uses binary search to find the parametric t for the given x.
-func (c *Cubic) GetValue(time float64) float64 {
-	if time <= 0 {
-		return 0
-	}
-	if time >= 1 {
-		return 1
+//
+// Ported from the reference Cubic.get_value: outside [0,1] it extrapolates
+// using the start/end gradients (rather than clamping to 0/1), and inside it
+// binary-searches for the parametric t with an early exit once x is within
+// 1e-5 of the target. The iteration cap is a safety net against the float
+// edge case where (start+end)/2 stops changing; it is high enough never to
+// affect the result in practice.
+func (c *Cubic) GetValue(t float64) float64 {
+	startGradient := 0.0
+	endGradient := 0.0
+	start := 0.0
+	mid := 0.0
+	end := 1.0
+
+	if t <= 0.0 {
+		if c.curves[0] > 0.0 {
+			startGradient = c.curves[1] / c.curves[0]
+		} else if c.curves[1] == 0.0 && c.curves[2] > 0.0 {
+			startGradient = c.curves[3] / c.curves[2]
+		}
+		return startGradient * t
 	}
 
-	// Binary search for t such that x(t) == time
-	low := 0.0
-	high := 1.0
-	var mid float64
+	if t >= 1.0 {
+		if c.curves[2] < 1.0 {
+			endGradient = (c.curves[3] - 1.0) / (c.curves[2] - 1.0)
+		} else if c.curves[2] == 1.0 && c.curves[0] < 1.0 {
+			endGradient = (c.curves[1] - 1.0) / (c.curves[0] - 1.0)
+		}
+		return 1.0 + endGradient*(t-1.0)
+	}
 
-	for i := 0; i < 32; i++ {
-		mid = (low + high) / 2.0
-		x := calcBezier(c.curves[0], c.curves[2], mid)
-		if x < time {
-			low = mid
+	for i := 0; start < end && i < 100; i++ {
+		mid = (start + end) / 2.0
+		xEst := calcBezier(c.curves[0], c.curves[2], mid)
+		if math.Abs(t-xEst) < 0.00001 {
+			return calcBezier(c.curves[1], c.curves[3], mid)
+		}
+		if xEst < t {
+			start = mid
 		} else {
-			high = mid
+			end = mid
 		}
 	}
 
@@ -512,7 +555,9 @@ func (tg *TransactionGenerator) generate(method, path string) string {
 
 	// XOR with random byte
 	randomByte := make([]byte, 1)
-	rand.Read(randomByte)
+	if _, err := rand.Read(randomByte); err != nil {
+		randomByte[0] = byte(time.Now().UnixNano())
+	}
 	rb := int(randomByte[0])
 
 	encoded := make([]byte, len(payload)+1)

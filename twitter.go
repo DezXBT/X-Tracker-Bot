@@ -124,7 +124,10 @@ func (tc *TwitterClient) getHeaders() http.Header {
 // the real generator is unavailable. X requires the header on every request.
 func fallbackTransactionID() string {
 	randPart := make([]byte, 32)
-	rand.Read(randPart)
+	if _, err := rand.Read(randPart); err != nil {
+		// crypto/rand should never fail; degrade to a time-seeded value.
+		binary.LittleEndian.PutUint64(randPart, uint64(time.Now().UnixNano()))
+	}
 	return base64.RawURLEncoding.EncodeToString(randPart)
 }
 
@@ -139,7 +142,14 @@ func (tc *TwitterClient) GetUser(screenName string) (*User, error) {
 		return nil, err
 	}
 
-	result := data["user"].(map[string]interface{})["result"].(map[string]interface{})
+	userObj, ok := data["user"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("missing user in response for %s", screenName)
+	}
+	result, ok := userObj["result"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("missing user.result in response for %s", screenName)
+	}
 	return parseUser(result)
 }
 
@@ -379,7 +389,12 @@ func getInt(m map[string]interface{}, key string) int {
 }
 
 func randInt(max int) int {
+	if max <= 0 {
+		return 0
+	}
 	b := make([]byte, 4)
-	rand.Read(b)
-	return int(binary.BigEndian.Uint32(b)) % max
+	if _, err := rand.Read(b); err != nil {
+		return 0
+	}
+	return int(binary.BigEndian.Uint32(b) % uint32(max))
 }

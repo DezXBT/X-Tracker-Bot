@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -9,8 +10,6 @@ import (
 	"syscall"
 	"time"
 )
-
-var cfgFile string
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
@@ -22,8 +21,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(1)
 	}
-	cfgFile = *configPath
-
 	// Validate
 	if err := validateConfig(cfg, *configPath); err != nil {
 		fmt.Fprintf(os.Stderr, "config invalid: %v\n", err)
@@ -81,11 +78,29 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
 	// Main loop
 	go func() {
+		defer close(done)
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			started := time.Now()
-			tracker.ScanOnce()
+			// Recover from panics so a single bad scan can't kill the loop.
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logError("[loop] recovered from panic: %v", r)
+					}
+				}()
+				tracker.ScanOnce()
+			}()
 			elapsed := time.Since(started)
 			interval := cfg.PollIntervalDuration()
 			wait := interval - elapsed
@@ -94,25 +109,39 @@ func main() {
 			}
 			logInfo("[loop] done in %s; sleep %s", elapsed.Round(time.Second), wait.Round(time.Second))
 
-			// Sleep with countdown
-			tick := 10 * time.Second
-			remaining := wait
-			for remaining > 0 {
-				d := tick
-				if d > remaining {
-					d = remaining
-				}
-				time.Sleep(d)
-				remaining -= d
-				if remaining > 0 {
-					logDebug("[loop] next scan in %s", remaining.Round(time.Second))
-				}
+			if sleepWithContext(ctx, wait) {
+				return
 			}
 		}
 	}()
 
 	sig := <-sigCh
-	logInfo("received %s, saving state...", sig)
+	logInfo("received %s, shutting down...", sig)
+	cancel()
+	<-done // wait for the loop to stop before touching shared state
 	state.Save(statePath)
 	logInfo("state saved, exiting")
+}
+
+// sleepWithContext sleeps for d, logging a countdown, but returns early with
+// true if ctx is cancelled.
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	const tick = 10 * time.Second
+	remaining := d
+	for remaining > 0 {
+		step := tick
+		if step > remaining {
+			step = remaining
+		}
+		select {
+		case <-ctx.Done():
+			return true
+		case <-time.After(step):
+		}
+		remaining -= step
+		if remaining > 0 {
+			logDebug("[loop] next scan in %s", remaining.Round(time.Second))
+		}
+	}
+	return false
 }
