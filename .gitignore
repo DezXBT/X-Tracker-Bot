@@ -1,0 +1,18 @@
+# Binary
+x-tracker
+early-tracking
+*.exe
+
+# Config (contains secrets)
+config.yaml
+
+# State files
+state/
+
+# Go build artifacts
+*.test
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db

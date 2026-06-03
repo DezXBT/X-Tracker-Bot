@@ -1,0 +1,35 @@
+# early-tracking config
+# Copy this file to config.yaml and fill in your values
+
+twitter:
+  cookies:
+    - auth_token: "your_auth_token_here"
+      ct0: "your_ct0_here"
+    # Add more cookie pairs for round-robin (optional)
+    # - auth_token: "second_auth_token"
+    #   ct0: "second_ct0"
+
+# File containing accounts to watch (one per line)
+# Supports: https://x.com/Handle, @Handle, Handle
+watch_file: twitter.txt
+
+tracking:
+  # Alert on ALL new follows (true) or only target accounts (false)
+  track_all_follows: true
+  # How often to scan (Go duration: 10m, 1h, 30s)
+  poll_interval: 10m
+  # Users per page when fetching following list
+  page_size: 10
+  # Max pages to fetch per watcher per scan
+  max_pages: 2
+  # Delay between pages
+  page_delay: 500ms
+
+discord:
+  # Discord webhook URL(s) for raw follow alerts
+  raw_webhooks:
+    - "https://discord.com/api/webhooks/YOUR_WEBHOOK_HERE"
+
+logging:
+  timezone: Asia/Jakarta
+  level: info  # debug, info, warn, error
