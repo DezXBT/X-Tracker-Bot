@@ -131,12 +131,17 @@ func (c *Categorizer) buildPrompt(name, screenName, bio, tweets string) string {
 			"Other (real crypto project fitting none above).\n\n"+
 			"Judge from the BIO and RECENT TWEETS. The USERNAME is only a weak hint: words like "+
 			"\"nft\", \"jpeg\", \"ai\", \"eth\" inside a handle do NOT decide the category.\n\n"+
+			"DO NOT GUESS. If the bio and tweets do not clearly indicate a category — vague hype, "+
+			"a countdown/teaser, \"loading...\", or just a $TICKER with no described product — "+
+			"answer Other. A $TICKER cashtag alone does NOT mean DeFi; judge what the project "+
+			"actually does, and if that is unclear, answer Other.\n\n"+
 			"Examples:\n"+
 			"- Bio \"marketing for ambitious founders @x | building @y\" -> KOL (a person)\n"+
 			"- Bio \"AI Builder | daily AI coding tips, Core Member @club\" -> KOL (a person)\n"+
 			"- Bio \"crypto comedy & shitposting\" -> KOL (a person)\n"+
 			"- Bio \"Decentralized perpetuals exchange, up to 50x\" -> DeFi (a project)\n"+
-			"- Bio \"The first zk-rollup scaling Ethereum\" -> Layer 2 (a project)\n\n"+
+			"- Bio \"The first zk-rollup scaling Ethereum\" -> Layer 2 (a project)\n"+
+			"- Bio \"v4 loading... the gate is opening, $SV4 is waiting\" -> Other (vague teaser, no described product)\n\n"+
 			"Allowed categories: %s.\n"+
 			"Reply with ONLY the category name, nothing else.\n\n"+
 			"Username: @%s\nName: %s\nBio: %s%s",
