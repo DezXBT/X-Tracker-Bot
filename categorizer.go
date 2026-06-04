@@ -109,19 +109,30 @@ func (c *Categorizer) buildPrompt(name, screenName, bio, tweets string) string {
 	}
 	return fmt.Sprintf(
 		"Classify this X (Twitter) crypto account into exactly ONE category.\n\n"+
-			"Decide from the BIO and RECENT TWEETS — what the account is actually about.\n"+
-			"The USERNAME is only a weak hint: words like \"nft\", \"jpeg\", \"ai\", \"eth\", "+
-			"\"defi\" inside a handle do NOT decide the category.\n\n"+
-			"Category guide:\n"+
-			"- KOL: an individual PERSON — influencer, alpha caller, commentator, comedian, "+
-			"trader personality, or someone's personal account (NOT a product/protocol).\n"+
-			"- Trading: trading-focused service/desk/signal group/market analysis.\n"+
-			"- AI: AI/ML projects or AI agents. Layer 1 / Layer 2: blockchains / scaling.\n"+
-			"- DeFi: dex, lending, perps, yield, stablecoins. NFT: NFT collections/marketplaces.\n"+
-			"- Gaming: games/GameFi. Meme: meme coin or meme-culture project.\n"+
-			"- DePIN, RWA, Infra (tooling/oracle/bridge/node), Social: as named.\n"+
-			"- Other: a real crypto account fitting none of the above.\n\n"+
-			"If the account is a person rather than a project, choose KOL.\n"+
+			"STEP 1 — Is this an individual PERSON or a PROJECT?\n"+
+			"PERSON = a human's personal account: founder, builder, developer, marketer, "+
+			"creator, influencer, commentator, trader, writer, \"anon\". Signals: first-person "+
+			"voice (\"I build\", \"marketing for...\"), a personal name/face, a role at some org "+
+			"(\"Core Member @x\", \"building @y\"), \"DM for collabs\".\n"+
+			"PROJECT = a product, protocol, company, token, DAO, or official team account. "+
+			"Signals: \"we/our\", \"the first...\", \"decentralized...\", a $TICKER, "+
+			"\"mainnet/testnet\", a community or product being promoted.\n\n"+
+			"STEP 2 — Pick the category:\n"+
+			"- If it is a PERSON -> answer KOL. The topic does NOT matter: an individual who "+
+			"works on AI, DeFi, gaming, etc. is still KOL, NOT that topic.\n"+
+			"- If it is a PROJECT -> pick the topical category: "+
+			"AI (AI/ML project or agent); Layer 1 / Layer 2 (blockchain / scaling); "+
+			"DeFi (dex/lending/perps/yield/stablecoin); NFT; Gaming/GameFi; Meme; DePIN; RWA; "+
+			"Infra (oracle/bridge/node/tooling); Social; Trading (trading service/desk/signals); "+
+			"Other (real crypto project fitting none above).\n\n"+
+			"Judge from the BIO and RECENT TWEETS. The USERNAME is only a weak hint: words like "+
+			"\"nft\", \"jpeg\", \"ai\", \"eth\" inside a handle do NOT decide the category.\n\n"+
+			"Examples:\n"+
+			"- Bio \"marketing for ambitious founders @x | building @y\" -> KOL (a person)\n"+
+			"- Bio \"AI Builder | daily AI coding tips, Core Member @club\" -> KOL (a person)\n"+
+			"- Bio \"crypto comedy & shitposting\" -> KOL (a person)\n"+
+			"- Bio \"Decentralized perpetuals exchange, up to 50x\" -> DeFi (a project)\n"+
+			"- Bio \"The first zk-rollup scaling Ethereum\" -> Layer 2 (a project)\n\n"+
 			"Allowed categories: %s.\n"+
 			"Reply with ONLY the category name, nothing else.\n\n"+
 			"Username: @%s\nName: %s\nBio: %s%s",
@@ -154,7 +165,7 @@ func (c *Categorizer) callOpenRouter(apiKey, model, prompt string) (string, erro
 	reqBody := orRequest{
 		Model: model,
 		Messages: []orMessage{
-			{Role: "system", Content: "You categorize crypto X/Twitter accounts. Distinguish individual people (KOL) from projects/protocols. Judge by bio and tweets, not the username. Output only a single category name."},
+			{Role: "system", Content: "You categorize crypto X/Twitter accounts. First decide if it's an individual person or a project. An individual person is ALWAYS KOL, regardless of their topic (AI, DeFi, etc.); only projects get a topical category. Judge by bio and tweets, not the username. Output only a single category name."},
 			{Role: "user", Content: prompt},
 		},
 		Temperature: 0,
