@@ -111,7 +111,7 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 		}
 		var b strings.Builder
 		for _, t := range c.Targets {
-			fmt.Fprintf(&b, "[@%s](https://x.com/%s) → **%d**\n", t.Handle, t.Handle, t.Count)
+			fmt.Fprintf(&b, "`%d×` [@%s](https://x.com/%s)\n", t.Count, t.Handle, t.Handle)
 		}
 		val := strings.TrimRight(b.String(), "\n")
 		if val == "" {
@@ -120,13 +120,14 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 		if utf8.RuneCountInString(val) > maxFieldValue {
 			val = truncateRunes(val, maxFieldValue-2) + "\n…"
 		}
+		name := fmt.Sprintf("%s  %s · %d", categoryEmoji(c.Name), c.Name, len(c.Targets))
 		// Stop before exceeding the overall embed character budget.
-		cost := utf8.RuneCountInString(c.Name) + utf8.RuneCountInString(val)
+		cost := utf8.RuneCountInString(name) + utf8.RuneCountInString(val)
 		if used+cost > embedBudget {
 			break
 		}
 		used += cost
-		fields = append(fields, webhookField{Name: c.Name, Value: val})
+		fields = append(fields, webhookField{Name: name, Value: val})
 		for _, t := range c.Targets {
 			included = append(included, t.Handle)
 		}
@@ -137,8 +138,8 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 
 	embed := webhookEmbed{
 		Title:       fmt.Sprintf("📊 Ringkasan %s Terakhir", humanizeDuration(window)),
-		Color:       0x1DA1F2,
-		Description: "Akun yang baru di-follow watchlist, dikelompokkan per kategori.\nAngka = jumlah akun tracker yang follow.",
+		Color:       0xFFD700,
+		Description: fmt.Sprintf("**%d akun** baru di **%d kategori**.\n`n×` = jumlah akun watchlist yang mem-follow.", len(included), len(fields)),
 		Fields:      fields,
 		Footer: &webhookFooter{
 			Text: fmt.Sprintf("X-Tracker-Bot | %s WIB", time.Now().In(loc).Format("02/01/2006, 15:04:05")),
@@ -148,6 +149,40 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 		return nil, err
 	}
 	return included, nil
+}
+
+// categoryEmoji returns a small icon for a category so the summary scans faster.
+func categoryEmoji(cat string) string {
+	switch cat {
+	case "AI":
+		return "🤖"
+	case "Layer 1":
+		return "⛓️"
+	case "Layer 2":
+		return "🟪"
+	case "DeFi":
+		return "💧"
+	case "NFT":
+		return "🖼️"
+	case "Gaming":
+		return "🎮"
+	case "Meme":
+		return "🐸"
+	case "DePIN":
+		return "📡"
+	case "RWA":
+		return "🏦"
+	case "Infra":
+		return "🔧"
+	case "Social":
+		return "💬"
+	case "KOL":
+		return "🎤"
+	case "Trading":
+		return "📈"
+	default:
+		return "🔹"
+	}
 }
 
 // truncateRunes limits s to at most maxRunes runes without splitting a
