@@ -6,15 +6,16 @@ import (
 	"sync"
 )
 
-// queryIDs are GraphQL operation → queryId. The values here are built-in
-// fallbacks; RefreshQueryIDs overrides them at startup with the live IDs
-// extracted from x.com's main JS bundle (X rotates these regularly).
+// queryIDs are GraphQL operation → queryId. These built-in values are the
+// proven-working IDs (same as the stable branch); X still serves them. They are
+// only overridden when dynamic refresh is explicitly enabled (RefreshFromBundle),
+// because newer IDs may require feature flags the built-in set doesn't include.
 var (
 	queryIDMu sync.RWMutex
 	queryIDs  = map[string]string{
-		"UserByScreenName": "IGgvgiOx4QZndDHuD3x9TQ",
-		"UserByRestId":     "VQfQ9wwYdk6j_u2O4vt64Q",
-		"Following":        "XRzHZz4sLnhSgz55WGMCbg",
+		"UserByScreenName": "1VOOyvKkiI3FMmkeDNxM9A",
+		"UserByRestId":     "tD8zKvQzwY3kdx5yz6YmOw",
+		"Following":        "zx6e-TLzRkeDO_a7p4b3JQ",
 		"Followers":        "IOh4aS6UdGWGJUYTqliQ7Q",
 		"UserTweets":       "PNd0vlufvrcIwrAnBYKE9g",
 	}

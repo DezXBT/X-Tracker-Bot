@@ -78,7 +78,7 @@ On top of the per-follow alerts, the bot can post an **hourly summary** that gro
 | **Real-Time Discord Alerts** | Rich embeds with profile link, bio, followers & avatar |
 | **AI Categorization** | Tags each followed account by project category (AI, Layer 2, DeFi, NFT…) via OpenRouter LLM + keyword fallback |
 | **Hourly Summary** | Posts a periodic digest grouped by category, counting how many watchers followed each target |
-| **Dynamic Query IDs & Features** | Pulls X's GraphQL query IDs *and required feature flags* live at startup, so the bot keeps working when X rotates IDs or adds new mandatory features |
+| **Optional Dynamic Query IDs** | Built-in GraphQL query IDs work out of the box; opt in to `dynamic_query_ids` to auto-pull the latest IDs + feature flags from x.com if X ever rotates them out |
 | **Smart Category Cache** | Caches each account's category (7-day TTL) to conserve OpenRouter free-tier quota |
 | **Cookie Pool Rotation** | Use multiple X auth cookies with round-robin rotation to reduce rate limits |
 | **Auto Dedup** | Duplicate accounts in your watch list are removed automatically |
@@ -362,6 +362,7 @@ tracking:
   page_size: 10                # Users fetched per API page
   max_pages: 2                 # Max pages per watcher per scan
   page_delay: 500ms            # Delay between API pages
+  dynamic_query_ids: false     # Pull latest GraphQL IDs from x.com (only if built-ins break)
 
 # Discord webhook(s)
 discord:
@@ -464,7 +465,7 @@ screen -S x-tracker
 
 **Startup**
 
-0. **Refresh query IDs & features** — Pulls X's current GraphQL query IDs *and required feature flags* from x.com's JS bundle (X rotates IDs and keeps adding mandatory features; a request missing one is rejected), falling back to built-in values if offline.
+0. **Query IDs** — Uses proven built-in GraphQL query IDs. If `dynamic_query_ids: true`, it instead pulls the latest IDs + required feature flags from x.com's JS bundle at startup (use only if X rotates the built-ins out).
 
 **Main loop** (every `poll_interval`)
 
@@ -505,8 +506,8 @@ screen -S x-tracker
 | Everything shows as `Uncategorized` | No key in `llm.txt`, or all models failed/hit quota — add keys/models (see [Step 9](#step-9--optional-enable-ai-categorization--hourly-summary)) |
 | `openrouter ... failed: HTTP 404` | That free model name is gone — update the `models` list with a current one |
 | No hourly summary appears | Set `summary_webhook`; the digest only sends when there are **new** projects (ones not already summarized) in the interval |
-| `bundle refresh failed` | Harmless if follows still work — the bot uses built-in fallback IDs/features; check network/outbound access to x.com if scans also fail |
-| Scans fail with `GraphQL error: ... features cannot be null` | X added a new mandatory feature; restart so the bot re-pulls the latest feature flags from x.com |
+| Scans fail with `GraphQL error: ...` after X changed something | The built-in query IDs were rotated out — set `dynamic_query_ids: true` and restart to pull the latest IDs + feature flags from x.com |
+| `bundle refresh failed` (only if `dynamic_query_ids: true`) | Couldn't reach x.com; the bot falls back to built-in IDs. Check outbound network, or set `dynamic_query_ids: false` |
 
 ---
 
@@ -549,7 +550,7 @@ Yes — when `use_tweets: true`, each *newly seen* account costs one extra `User
 By design — to keep the summary channel readable, each project is reported a single time. Once it's in a digest it's excluded from later ones until `summary_dedup_ttl` (default 30 days) passes, after which renewed interest can surface it again. The real-time raw alerts are unaffected; they still fire on every new follow.
 
 **The bot stopped finding follows after X updated — what do I do?**
-Usually nothing. The bot refreshes X's GraphQL query IDs from x.com at every startup, so a simple restart picks up X's latest changes automatically.
+The built-in query IDs are proven to work. If X rotates them out and scans start failing, set `dynamic_query_ids: true` in `config.yaml` and restart — the bot will then pull the latest IDs and feature flags from x.com automatically.
 
 **What operating systems does it support?**
 Linux, macOS, and Windows. It's a single self-contained binary with no runtime dependencies.
@@ -586,7 +587,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o x-tracker.exe .
 ## 🧱 Tech Stack
 
 - **Language:** Go (single static binary, no runtime dependencies)
-- **API:** X / Twitter internal GraphQL API (cookie-based authentication, dynamic query IDs)
+- **API:** X / Twitter internal GraphQL API (cookie-based authentication, optional dynamic query IDs)
 - **AI:** OpenRouter LLM for project categorization (free-tier capable, multi-key rotation) with keyword fallback
 - **Output:** Discord webhooks (rich embeds + hourly category summary)
 - **State:** JSON file persistence (baseline, dedup pairs, category cache)

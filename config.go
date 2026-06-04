@@ -23,6 +23,10 @@ type TrackingConfig struct {
 	PageSize        int    `yaml:"page_size"`
 	MaxPages        int    `yaml:"max_pages"`
 	PageDelay       string `yaml:"page_delay"`
+	// DynamicQueryIDs, when true, refreshes GraphQL query IDs + feature flags
+	// from x.com at startup. Off by default: the built-in IDs are proven to
+	// work, and newer IDs can require feature flags that break scanning.
+	DynamicQueryIDs bool `yaml:"dynamic_query_ids"`
 }
 
 type DiscordConfig struct {

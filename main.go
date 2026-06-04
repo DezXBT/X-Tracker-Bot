@@ -77,13 +77,17 @@ func main() {
 		cfg.CategorizationEnabled(), len(cfg.Categorization.OpenRouter.APIKeys), len(cfg.Categorization.OpenRouter.Models))
 	logInfo("summary webhook: %v (interval: %s)", cfg.Discord.SummaryWebhook != "", cfg.SummaryIntervalDuration())
 
-	// Refresh GraphQL query IDs and required feature flags from x.com (X rotates
-	// query IDs and adds new mandatory features). Non-fatal: on failure the
-	// built-in fallbacks remain in effect.
-	if nIDs, nFeat, err := RefreshFromBundle(); err != nil {
-		logWarn("bundle refresh failed: %v (using built-in fallbacks)", err)
+	// Optionally refresh GraphQL query IDs + feature flags from x.com. Disabled
+	// by default: the built-in IDs are proven to work; enable only if X has
+	// rotated them out and scans start failing. Non-fatal on error.
+	if cfg.Tracking.DynamicQueryIDs {
+		if nIDs, nFeat, err := RefreshFromBundle(); err != nil {
+			logWarn("bundle refresh failed: %v (using built-in IDs)", err)
+		} else {
+			logInfo("refreshed %d GraphQL query IDs and added %d feature flags from x.com", nIDs, nFeat)
+		}
 	} else {
-		logInfo("refreshed %d GraphQL query IDs and added %d feature flags from x.com", nIDs, nFeat)
+		logInfo("using built-in GraphQL query IDs (dynamic_query_ids disabled)")
 	}
 
 	// Initialize X-Client-Transaction-Id generator (fetches x.com + ondemand JS).

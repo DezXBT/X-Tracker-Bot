@@ -25,6 +25,10 @@ tracking:
   max_pages: 2
   # Delay between pages
   page_delay: 500ms
+  # Refresh GraphQL query IDs + feature flags from x.com at startup. Leave false
+  # (default) — the built-in IDs are proven to work. Only enable if X rotates
+  # them out and scans start failing with GraphQL errors.
+  dynamic_query_ids: false
 
 discord:
   # Discord webhook URL(s) for raw follow alerts (per-follow, real-time)
