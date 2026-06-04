@@ -18,46 +18,46 @@ const bearerToken = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs
 // Query IDs live in queryid.go and are refreshed from x.com at startup.
 
 var defaultFeatures = map[string]bool{
-	"rweb_tipjar_consumption_enabled":                                     true,
-	"responsive_web_graphql_exclude_directive_enabled":                    true,
-	"verified_phone_label_enabled":                                        false,
-	"creator_subscriptions_tweet_preview_api_enabled":                     true,
-	"responsive_web_graphql_timeline_navigation_enabled":                  true,
-	"responsive_web_graphql_skip_user_profile_image_extensions_enabled":   false,
-	"communities_web_enable_tweet_community_results_fetch":                true,
-	"c9s_tweet_anatomy_moderator_badge_enabled":                           true,
-	"articles_preview_enabled":                                            true,
-	"tweetypie_unmention_optimization_enabled":                            true,
-	"responsive_web_edit_tweet_api_enabled":                               true,
-	"graphql_is_translatable_rweb_tweet_is_translatable_enabled":          true,
-	"view_counts_everywhere_api_enabled":                                  true,
-	"longform_notetweets_consumption_enabled":                             true,
-	"responsive_web_twitter_article_tweet_consumption_enabled":            true,
-	"tweet_awards_web_tipping_enabled":                                    false,
-	"creator_subscriptions_quote_tweet_preview_enabled":                   false,
-	"freedom_of_speech_not_reach_fetch_enabled":                           true,
-	"standardized_nudges_misinfo":                                         true,
+	"rweb_tipjar_consumption_enabled":                                         true,
+	"responsive_web_graphql_exclude_directive_enabled":                        true,
+	"verified_phone_label_enabled":                                            false,
+	"creator_subscriptions_tweet_preview_api_enabled":                         true,
+	"responsive_web_graphql_timeline_navigation_enabled":                      true,
+	"responsive_web_graphql_skip_user_profile_image_extensions_enabled":       false,
+	"communities_web_enable_tweet_community_results_fetch":                    true,
+	"c9s_tweet_anatomy_moderator_badge_enabled":                               true,
+	"articles_preview_enabled":                                                true,
+	"tweetypie_unmention_optimization_enabled":                                true,
+	"responsive_web_edit_tweet_api_enabled":                                   true,
+	"graphql_is_translatable_rweb_tweet_is_translatable_enabled":              true,
+	"view_counts_everywhere_api_enabled":                                      true,
+	"longform_notetweets_consumption_enabled":                                 true,
+	"responsive_web_twitter_article_tweet_consumption_enabled":                true,
+	"tweet_awards_web_tipping_enabled":                                        false,
+	"creator_subscriptions_quote_tweet_preview_enabled":                       false,
+	"freedom_of_speech_not_reach_fetch_enabled":                               true,
+	"standardized_nudges_misinfo":                                             true,
 	"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
-	"rweb_video_timestamps_enabled":                                       true,
-	"longform_notetweets_rich_text_read_enabled":                          true,
-	"longform_notetweets_inline_media_enabled":                            true,
-	"responsive_web_enhance_cards_enabled":                                false,
-	"responsive_web_twitter_article_notes_tab_enabled":                    true,
-	"subscriptions_verification_info_verified_since_enabled":              true,
-	"subscriptions_verification_info_is_identity_verified_enabled":        true,
-	"highlights_tweets_tab_ui_enabled":                                    true,
-	"profile_label_improvements_pcf_label_in_post_enabled":                true,
-	"hidden_profile_subscriptions_enabled":                                true,
-	"subscriptions_feature_can_gift_premium":                              true,
-	"responsive_web_grok_show_grok_translated_post":                       true,
-	"responsive_web_grok_analyze_post_followups_enabled":                  true,
-	"premium_content_api_read_enabled":                                    true,
-	"responsive_web_grok_image_annotation_enabled":                        true,
-	"responsive_web_grok_share_attachment_enabled":                        true,
-	"responsive_web_grok_analysis_button_from_backend":                    true,
-	"responsive_web_grok_analyze_button_fetch_trends_enabled":             true,
-	"rweb_video_screen_enabled":                                           true,
-	"responsive_web_jetfuel_frame":                                        true,
+	"rweb_video_timestamps_enabled":                                           true,
+	"longform_notetweets_rich_text_read_enabled":                              true,
+	"longform_notetweets_inline_media_enabled":                                true,
+	"responsive_web_enhance_cards_enabled":                                    false,
+	"responsive_web_twitter_article_notes_tab_enabled":                        true,
+	"subscriptions_verification_info_verified_since_enabled":                  true,
+	"subscriptions_verification_info_is_identity_verified_enabled":            true,
+	"highlights_tweets_tab_ui_enabled":                                        true,
+	"profile_label_improvements_pcf_label_in_post_enabled":                    true,
+	"hidden_profile_subscriptions_enabled":                                    true,
+	"subscriptions_feature_can_gift_premium":                                  true,
+	"responsive_web_grok_show_grok_translated_post":                           true,
+	"responsive_web_grok_analyze_post_followups_enabled":                      true,
+	"premium_content_api_read_enabled":                                        true,
+	"responsive_web_grok_image_annotation_enabled":                            true,
+	"responsive_web_grok_share_attachment_enabled":                            true,
+	"responsive_web_grok_analysis_button_from_backend":                        true,
+	"responsive_web_grok_analyze_button_fetch_trends_enabled":                 true,
+	"rweb_video_screen_enabled":                                               true,
+	"responsive_web_jetfuel_frame":                                            true,
 }
 
 // User represents a Twitter user profile
@@ -128,8 +128,8 @@ func fallbackTransactionID() string {
 // GetUser fetches a user profile by screen name.
 func (tc *TwitterClient) GetUser(screenName string) (*User, error) {
 	variables := map[string]interface{}{
-		"screen_name":                screenName,
-		"withSafetyModeUserFields":   true,
+		"screen_name":              screenName,
+		"withSafetyModeUserFields": true,
 	}
 	data, err := tc.graphql("UserByScreenName", variables, false)
 	if err != nil {
@@ -192,10 +192,7 @@ func parseTweetsText(data map[string]interface{}, maxTweets int) string {
 	var texts []string
 	collectFullText(data, &texts, maxTweets)
 	joined := strings.Join(texts, " | ")
-	if len(joined) > 1000 {
-		joined = joined[:1000]
-	}
-	return joined
+	return truncateRunes(joined, 1000)
 }
 
 func collectFullText(v interface{}, out *[]string, limit int) {
@@ -332,10 +329,10 @@ func parseUser(result map[string]interface{}) (*User, error) {
 	}
 
 	user := &User{
-		Name:       getString(legacy, "name"),
-		ScreenName: getString(legacy, "screen_name"),
-		Description: getString(legacy, "description"),
-		FollowersCount: getInt(legacy, "followers_count"),
+		Name:            getString(legacy, "name"),
+		ScreenName:      getString(legacy, "screen_name"),
+		Description:     getString(legacy, "description"),
+		FollowersCount:  getInt(legacy, "followers_count"),
 		ProfileImageURL: getString(legacy, "profile_image_url_https"),
 	}
 	if id, ok := result["rest_id"].(string); ok {

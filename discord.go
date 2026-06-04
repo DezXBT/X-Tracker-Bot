@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type DiscordWebhook struct {
@@ -55,8 +56,8 @@ func (dw *DiscordWebhook) SendFollowAlert(webhookURLs []string, watcher, targetS
 	if cleanBio == "" {
 		cleanBio = "(no bio)"
 	}
-	if len(cleanBio) > 900 {
-		cleanBio = cleanBio[:897] + "..."
+	if utf8.RuneCountInString(cleanBio) > 900 {
+		cleanBio = truncateRunes(cleanBio, 897) + "..."
 	}
 
 	followerText := "Unknown"
@@ -69,7 +70,7 @@ func (dw *DiscordWebhook) SendFollowAlert(webhookURLs []string, watcher, targetS
 	}
 
 	embed := webhookEmbed{
-		Color: 0xFFD700,
+		Color:       0xFFD700,
 		Description: fmt.Sprintf("[@%s](%s) just followed [%s](%s)", watcher, watcherLink, targetScreen, targetLink),
 		Fields: []webhookField{
 			{Name: "Category", Value: category, Inline: true},
@@ -89,12 +90,25 @@ func (dw *DiscordWebhook) SendFollowAlert(webhookURLs []string, watcher, targetS
 	return dw.postToAll(webhookURLs, payload)
 }
 
-// SendSummary posts the categorized hourly summary to a single webhook.
-// Each category becomes an embed field listing its targets and how many
-// distinct watchlist accounts followed each one within the window.
-func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory, window time.Duration, loc *time.Location) error {
+// SendSummary posts the categorized hourly summary to a single webhook. Each
+// category becomes an embed field listing its targets and how many distinct
+// watchlist accounts followed each one within the window. It returns the target
+// handles actually included in the embed, so the caller marks only what was
+// really shown (some categories may be dropped to respect Discord's limits).
+func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory, window time.Duration, loc *time.Location) ([]string, error) {
+	const (
+		maxFieldValue = 1024 // Discord per-field value limit (characters)
+		maxFields     = 25   // Discord per-embed field limit
+		embedBudget   = 5500 // headroom under Discord's 6000-char total embed limit
+	)
+
 	var fields []webhookField
+	var included []string
+	used := 0
 	for _, c := range cats {
+		if len(fields) >= maxFields {
+			break
+		}
 		var b strings.Builder
 		for _, t := range c.Targets {
 			fmt.Fprintf(&b, "[@%s](https://x.com/%s) → **%d**\n", t.Handle, t.Handle, t.Count)
@@ -103,18 +117,22 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 		if val == "" {
 			continue
 		}
-		// Discord caps a field value at 1024 chars.
-		if len(val) > 1024 {
-			val = val[:1000] + "\n…"
+		if utf8.RuneCountInString(val) > maxFieldValue {
+			val = truncateRunes(val, maxFieldValue-2) + "\n…"
 		}
+		// Stop before exceeding the overall embed character budget.
+		cost := utf8.RuneCountInString(c.Name) + utf8.RuneCountInString(val)
+		if used+cost > embedBudget {
+			break
+		}
+		used += cost
 		fields = append(fields, webhookField{Name: c.Name, Value: val})
+		for _, t := range c.Targets {
+			included = append(included, t.Handle)
+		}
 	}
 	if len(fields) == 0 {
-		return nil
-	}
-	// Discord caps an embed at 25 fields.
-	if len(fields) > 25 {
-		fields = fields[:25]
+		return nil, nil
 	}
 
 	embed := webhookEmbed{
@@ -126,7 +144,24 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 			Text: fmt.Sprintf("X-Tracker-Bot | %s WIB", time.Now().In(loc).Format("02/01/2006, 15:04:05")),
 		},
 	}
-	return dw.postToAll([]string{webhookURL}, webhookPayload{Embeds: []webhookEmbed{embed}})
+	if err := dw.postToAll([]string{webhookURL}, webhookPayload{Embeds: []webhookEmbed{embed}}); err != nil {
+		return nil, err
+	}
+	return included, nil
+}
+
+// truncateRunes limits s to at most maxRunes runes without splitting a
+// multi-byte UTF-8 character (which would produce an invalid string Discord
+// rejects).
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:maxRunes])
 }
 
 // humanizeDuration renders common durations in Indonesian (e.g. "1 Jam").

@@ -24,16 +24,16 @@ type CategoryEntry struct {
 }
 
 type Event struct {
-	Ts              string  `json:"ts"`
-	Watcher         string  `json:"watcher"`
-	Target          string  `json:"target"`
-	TargetLower     string  `json:"targetLower"`
-	Name            string  `json:"name"`
-	Bio             string  `json:"bio"`
-	Category        string  `json:"category"`
-	FollowersCount  *int    `json:"followersCount"`
-	ProfileImageURL string  `json:"profileImageUrl"`
-	TargetURL       string  `json:"targetUrl"`
+	Ts              string `json:"ts"`
+	Watcher         string `json:"watcher"`
+	Target          string `json:"target"`
+	TargetLower     string `json:"targetLower"`
+	Name            string `json:"name"`
+	Bio             string `json:"bio"`
+	Category        string `json:"category"`
+	FollowersCount  *int   `json:"followersCount"`
+	ProfileImageURL string `json:"profileImageUrl"`
+	TargetURL       string `json:"targetUrl"`
 }
 
 func NewState() *State {

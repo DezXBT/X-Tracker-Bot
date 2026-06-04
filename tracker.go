@@ -57,8 +57,10 @@ func (t *Tracker) categorize(target User) string {
 		return cat
 	}
 
+	// Recent tweets are only worth an extra API call when the LLM can use them;
+	// keyword matching works fine on name + bio alone.
 	tweetText := ""
-	if t.cfg.CategorizationEnabled() && t.cfg.UseTweetsEnabled() && target.RestID != "" {
+	if t.categorizer.HasLLM() && t.cfg.UseTweetsEnabled() && target.RestID != "" {
 		if txt, err := t.getUserTweetsWithRetry(target.RestID, t.cfg.Categorization.TweetCount); err != nil {
 			logWarn("[categorize] fetch tweets @%s failed: %v", target.ScreenName, err)
 		} else {
@@ -67,7 +69,11 @@ func (t *Tracker) categorize(target User) string {
 	}
 
 	cat := t.categorizer.Categorize(target.Name, target.ScreenName, target.Description, tweetText)
-	t.state.SetCachedCategory(target.ScreenName, cat)
+	// Don't cache a non-result: an Uncategorized outcome usually means the LLM
+	// was unavailable, so caching it would suppress retries for the full TTL.
+	if cat != UncategorizedLabel {
+		t.state.SetCachedCategory(target.ScreenName, cat)
+	}
 	return cat
 }
 
@@ -281,6 +287,10 @@ func (t *Tracker) RunSummaryLoop(ctx context.Context) {
 		return
 	}
 	interval := t.cfg.SummaryIntervalDuration()
+	if interval <= 0 {
+		logWarn("[summary] non-positive interval %s; summary disabled", interval)
+		return
+	}
 	logInfo("[summary] enabled; interval=%s", interval)
 
 	ticker := time.NewTicker(interval)
@@ -327,17 +337,22 @@ func (t *Tracker) sendSummary(window time.Duration) {
 		return
 	}
 
-	if err := t.webhook.SendSummary(t.cfg.Discord.SummaryWebhook, grouped, window, t.cfg.Timezone()); err != nil {
+	// Mark only what was actually included in the embed (SendSummary may drop
+	// categories to fit Discord's limits) so dropped projects aren't lost.
+	included, err := t.webhook.SendSummary(t.cfg.Discord.SummaryWebhook, grouped, window, t.cfg.Timezone())
+	if err != nil {
 		logError("[summary] send failed: %v", err)
 		return
 	}
-
-	for _, h := range newTargets {
+	if len(included) == 0 {
+		return
+	}
+	for _, h := range included {
 		t.state.MarkSummarized(h)
 	}
 	t.state.PruneSummarized(ttl)
 	t.state.Save(t.statePath)
-	logInfo("[summary] sent (%d new projects across %d categories)", len(newTargets), len(grouped))
+	logInfo("[summary] sent (%d new projects)", len(included))
 }
 
 // filterUnsummarized removes targets already reported within ttl and drops any
@@ -390,6 +405,9 @@ func aggregateByCategory(events []Event) []SummaryCategory {
 		tl := e.TargetLower
 		if tl == "" {
 			tl = strings.ToLower(e.Target)
+		}
+		if tl == "" {
+			continue // skip events with no resolvable target handle
 		}
 		if byCat[cat] == nil {
 			byCat[cat] = make(map[string]map[string]bool)

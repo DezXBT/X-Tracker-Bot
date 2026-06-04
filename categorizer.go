@@ -49,6 +49,12 @@ func (c *Categorizer) nextKey() string {
 	return k
 }
 
+// HasLLM reports whether the LLM path is usable (enabled with at least one key
+// and model). When false, categorization relies on keyword matching only.
+func (c *Categorizer) HasLLM() bool {
+	return c.enabled && len(c.apiKeys) > 0 && len(c.models) > 0
+}
+
 // Categorize returns the best category for an account. It tries the LLM first,
 // then keyword matching, and finally returns UncategorizedLabel. tweets is
 // optional recent tweet text used as an extra signal.

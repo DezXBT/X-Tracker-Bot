@@ -44,7 +44,7 @@ func TestNormalize(t *testing.T) {
 	c := newTestCategorizer()
 	cases := []struct{ in, want string }{
 		{"AI", "AI"},
-		{"ai", "AI"},          // snaps to canonical casing
+		{"ai", "AI"}, // snaps to canonical casing
 		{"\"Layer 2\"", "Layer 2"},
 		{"Gaming.", "Gaming"},
 		{"SocialFi", "SocialFi"}, // new category proposed by model
