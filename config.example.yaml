@@ -57,12 +57,13 @@ categorization:
     - Social
   # How long a categorized handle stays cached before being re-checked.
   cache_ttl: 168h  # 7 days
+  # File holding OpenRouter API keys (one per line). Recommended place for keys
+  # so they stay out of config.yaml. Merged with any api_keys below.
+  keys_file: llm.txt
   openrouter:
-    # Multiple keys are rotated round-robin (helps spread free-tier quota).
-    # If empty, categorization falls back to keyword matching only.
-    api_keys:
-      - "sk-or-v1-YOUR_OPENROUTER_KEY"
-      # - "sk-or-v1-SECOND_KEY"
+    # Keys can also be listed here, but llm.txt is preferred. Multiple keys are
+    # rotated round-robin. If no keys at all, categorization uses keywords only.
+    api_keys: []
     # Free-tier models, tried in order until one succeeds.
     models:
       - "meta-llama/llama-3.3-70b-instruct:free"

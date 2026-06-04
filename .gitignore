@@ -6,6 +6,9 @@ early-tracking
 # Config (contains secrets)
 config.yaml
 
+# OpenRouter API keys (contains secrets)
+llm.txt
+
 # State files
 state/
 

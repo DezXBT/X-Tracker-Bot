@@ -1,0 +1,11 @@
+# OpenRouter API keys for AI categorization — one key per line.
+# Copy this file to llm.txt and paste your real keys.
+#
+#   cp llm.example.txt llm.txt
+#
+# Get keys at https://openrouter.ai → Keys → Create Key (starts with sk-or-v1-).
+# Add several keys to rotate round-robin and spread the free-tier quota.
+# Blank lines and lines starting with '#' are ignored.
+
+sk-or-v1-REPLACE_WITH_YOUR_FIRST_KEY
+# sk-or-v1-REPLACE_WITH_YOUR_SECOND_KEY

@@ -42,6 +42,7 @@ type CategorizationConfig struct {
 	Enabled    *bool            `yaml:"enabled"`
 	UseTweets  *bool            `yaml:"use_tweets"`
 	TweetCount int              `yaml:"tweet_count"`
+	KeysFile   string           `yaml:"keys_file"`
 	Categories []string         `yaml:"categories"`
 	CacheTTL   string           `yaml:"cache_ttl"`
 	OpenRouter OpenRouterConfig `yaml:"openrouter"`
@@ -178,6 +179,49 @@ func loadWatchAccounts(filePath string) ([]string, error) {
 	return accounts, scanner.Err()
 }
 
+// loadLLMKeys reads OpenRouter API keys from a file, one per line. Blank lines
+// and lines starting with '#' are ignored. A missing file is not an error —
+// keys may instead be provided directly in config.yaml.
+func loadLLMKeys(filePath string) ([]string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("open llm keys file: %w", err)
+	}
+	defer f.Close()
+
+	var keys []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		keys = append(keys, line)
+	}
+	return keys, scanner.Err()
+}
+
+// mergeUniqueKeys concatenates key slices, trimming blanks and dropping dupes
+// while preserving order.
+func mergeUniqueKeys(lists ...[]string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, list := range lists {
+		for _, k := range list {
+			k = strings.TrimSpace(k)
+			if k == "" || seen[k] {
+				continue
+			}
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 func loadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -222,6 +266,9 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if cfg.Categorization.TweetCount == 0 {
 		cfg.Categorization.TweetCount = 5
+	}
+	if cfg.Categorization.KeysFile == "" {
+		cfg.Categorization.KeysFile = "llm.txt"
 	}
 
 	return cfg, nil

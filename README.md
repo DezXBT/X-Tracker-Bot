@@ -267,9 +267,25 @@ The bot can categorize each followed account (AI, Layer 2, DeFi, NFT, Meme…) u
 2. Go to **Keys** → **Create Key** and copy it (starts with `sk-or-v1-...`).
 3. *(Recommended)* Create **several keys** — the bot rotates them round-robin to spread the free-tier quota.
 
-**2. Add a summary webhook** (a second Discord webhook, see [Step 6](#step-6--get-your-discord-webhook-url)) — ideally a **separate channel** so digests don't clutter your real-time alerts.
+**2. Put your keys in `llm.txt`** (one key per line). This keeps secrets out of `config.yaml`:
 
-**3. Fill in the `categorization` and `summary` settings in `config.yaml`:**
+```bash
+cp llm.example.txt llm.txt
+```
+
+Then edit `llm.txt`:
+
+```
+sk-or-v1-your_first_key
+sk-or-v1-your_second_key
+# lines starting with # are ignored
+```
+
+> 🔒 `llm.txt` is git-ignored, just like `config.yaml`. Never commit or share it.
+
+**3. Add a summary webhook** (a second Discord webhook, see [Step 6](#step-6--get-your-discord-webhook-url)) — ideally a **separate channel** so digests don't clutter your real-time alerts.
+
+**4. Fill in the `categorization` and `summary` settings in `config.yaml`** (note: keys live in `llm.txt`, not here):
 
 ```yaml
 discord:
@@ -283,6 +299,7 @@ categorization:
   use_tweets: true                # also read recent tweets as a signal (1 extra API call per new account)
   tweet_count: 5
   cache_ttl: 168h                 # remember a category for 7 days (saves quota)
+  keys_file: llm.txt              # where OpenRouter API keys are read from
   categories:                     # base taxonomy — the LLM may add new ones when nothing fits
     - AI
     - Layer 1
@@ -296,8 +313,7 @@ categorization:
     - Infra
     - Social
   openrouter:
-    api_keys:                     # multiple keys are rotated round-robin
-      - "sk-or-v1-YOUR_KEY"
+    api_keys: []                  # optional; prefer llm.txt. Merged with keys from the file
     models:                       # free-tier models, tried in order until one works
       - "meta-llama/llama-3.3-70b-instruct:free"
       - "google/gemini-2.0-flash-exp:free"
@@ -354,9 +370,10 @@ categorization:
   use_tweets: true             # read recent tweets as an extra signal
   tweet_count: 5               # how many recent tweets to fetch
   cache_ttl: 168h              # how long a category is cached (7 days)
+  keys_file: llm.txt           # OpenRouter API keys, one per line (preferred over inline)
   categories: [AI, Layer 2, DeFi, NFT, Meme, ...]   # base taxonomy (LLM may extend)
   openrouter:
-    api_keys: ["sk-or-v1-..."] # rotated round-robin; empty = keyword-only fallback
+    api_keys: []               # optional inline keys; merged with llm.txt. None = keyword-only
     models: ["meta-llama/llama-3.3-70b-instruct:free", "..."]  # tried in order
 
 # Logging
@@ -477,7 +494,7 @@ screen -S x-tracker
 | `watch_file not found` | Make sure `twitter.txt` exists in the same folder as the binary |
 | Bot sends old follows on restart | Delete the `state/` folder and restart |
 | `command not found: go` | Go isn't installed — revisit [Step 1](#step-1--install-go) |
-| Everything shows as `Uncategorized` | No OpenRouter key set, or all models failed/hit quota — add keys/models (see [Step 9](#step-9--optional-enable-ai-categorization--hourly-summary)) |
+| Everything shows as `Uncategorized` | No key in `llm.txt`, or all models failed/hit quota — add keys/models (see [Step 9](#step-9--optional-enable-ai-categorization--hourly-summary)) |
 | `openrouter ... failed: HTTP 404` | That free model name is gone — update the `models` list with a current one |
 | No hourly summary appears | Set `summary_webhook`; the digest only sends when there were follows in the interval |
 | `query ID refresh failed` | Harmless — the bot uses built-in fallback IDs; check network if follows also fail |

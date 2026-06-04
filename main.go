@@ -53,6 +53,18 @@ func main() {
 	// Load state
 	state := LoadState(statePath)
 
+	// Load OpenRouter API keys from file (merged with any set in config.yaml)
+	llmPath := cfg.Categorization.KeysFile
+	if !filepath.IsAbs(llmPath) {
+		llmPath = filepath.Join(filepath.Dir(*configPath), llmPath)
+	}
+	if fileKeys, err := loadLLMKeys(llmPath); err != nil {
+		logWarn("load llm keys: %v", err)
+	} else if len(fileKeys) > 0 {
+		cfg.Categorization.OpenRouter.APIKeys = mergeUniqueKeys(cfg.Categorization.OpenRouter.APIKeys, fileKeys)
+		logInfo("loaded %d OpenRouter key(s) from %s", len(fileKeys), filepath.Base(llmPath))
+	}
+
 	// Print startup info
 	logInfo("early-tracking online (Go)")
 	logInfo("watch accounts: %v", accounts)
