@@ -10,11 +10,17 @@ import (
 	"time"
 )
 
+// categoryCacheVersion is bumped whenever the categorization taxonomy or prompt
+// changes in a way that should invalidate previously cached categories. On load,
+// a mismatch triggers a one-time cache reset (see MaybeResetCategoryCache).
+const categoryCacheVersion = 1
+
 type State struct {
-	ByWatcher         map[string][]string      `json:"byWatcher"`
-	SentPairs         map[string]int64         `json:"sentPairs"`
-	CategoryCache     map[string]CategoryEntry `json:"categoryCache"`
-	SummarizedTargets map[string]int64         `json:"summarizedTargets"`
+	ByWatcher            map[string][]string      `json:"byWatcher"`
+	SentPairs            map[string]int64         `json:"sentPairs"`
+	CategoryCache        map[string]CategoryEntry `json:"categoryCache"`
+	CategoryCacheVersion int                      `json:"categoryCacheVersion"`
+	SummarizedTargets    map[string]int64         `json:"summarizedTargets"`
 }
 
 // CategoryEntry is a cached categorization result for a single handle.
@@ -110,6 +116,19 @@ func (s *State) SetCachedCategory(handle, category string) {
 		Category: category,
 		Ts:       time.Now().UnixMilli(),
 	}
+}
+
+// MaybeResetCategoryCache clears the category cache once when the stored version
+// differs from the given version (e.g. after a taxonomy/prompt change), so stale
+// categories get re-evaluated. Returns the number of entries cleared.
+func (s *State) MaybeResetCategoryCache(version int) int {
+	if s.CategoryCacheVersion == version {
+		return 0
+	}
+	n := len(s.CategoryCache)
+	s.CategoryCache = make(map[string]CategoryEntry)
+	s.CategoryCacheVersion = version
+	return n
 }
 
 // PruneCategoryCache drops cache entries older than ttl.

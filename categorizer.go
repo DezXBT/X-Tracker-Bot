@@ -103,14 +103,26 @@ func (c *Categorizer) buildPrompt(name, screenName, bio, tweets string) string {
 	if bio == "" {
 		bio = "(no bio)"
 	}
-	tweetLine := ""
+	tweetLine := "\nRecent tweets: (none)"
 	if tweets != "" {
 		tweetLine = fmt.Sprintf("\nRecent tweets: %s", tweets)
 	}
 	return fmt.Sprintf(
-		"Classify this X (Twitter) crypto/web3 account into ONE project category.\n"+
-			"Prefer one of these categories: %s.\n"+
-			"If none fits, you may answer with a short new category (1-3 words).\n"+
+		"Classify this X (Twitter) crypto account into exactly ONE category.\n\n"+
+			"Decide from the BIO and RECENT TWEETS — what the account is actually about.\n"+
+			"The USERNAME is only a weak hint: words like \"nft\", \"jpeg\", \"ai\", \"eth\", "+
+			"\"defi\" inside a handle do NOT decide the category.\n\n"+
+			"Category guide:\n"+
+			"- KOL: an individual PERSON — influencer, alpha caller, commentator, comedian, "+
+			"trader personality, or someone's personal account (NOT a product/protocol).\n"+
+			"- Trading: trading-focused service/desk/signal group/market analysis.\n"+
+			"- AI: AI/ML projects or AI agents. Layer 1 / Layer 2: blockchains / scaling.\n"+
+			"- DeFi: dex, lending, perps, yield, stablecoins. NFT: NFT collections/marketplaces.\n"+
+			"- Gaming: games/GameFi. Meme: meme coin or meme-culture project.\n"+
+			"- DePIN, RWA, Infra (tooling/oracle/bridge/node), Social: as named.\n"+
+			"- Other: a real crypto account fitting none of the above.\n\n"+
+			"If the account is a person rather than a project, choose KOL.\n"+
+			"Allowed categories: %s.\n"+
 			"Reply with ONLY the category name, nothing else.\n\n"+
 			"Username: @%s\nName: %s\nBio: %s%s",
 		strings.Join(c.categories, ", "), screenName, name, bio, tweetLine,
@@ -142,7 +154,7 @@ func (c *Categorizer) callOpenRouter(apiKey, model, prompt string) (string, erro
 	reqBody := orRequest{
 		Model: model,
 		Messages: []orMessage{
-			{Role: "system", Content: "You are a precise crypto/web3 project categorizer. Output only a category name."},
+			{Role: "system", Content: "You categorize crypto X/Twitter accounts. Distinguish individual people (KOL) from projects/protocols. Judge by bio and tweets, not the username. Output only a single category name."},
 			{Role: "user", Content: prompt},
 		},
 		Temperature: 0,
@@ -237,6 +249,7 @@ var keywordRules = func() []keywordRule {
 		{`socialfi`, "Social"}, {`social`, "Social"},
 		{`oracle`, "Infra"}, {`infra`, "Infra"}, {`node`, "Infra"}, {`bridge`, "Infra"},
 		{`\bai\b`, "AI"}, {`artificial intelligence`, "AI"}, {`agent`, "AI"}, {`\bllm\b`, "AI"},
+		{`trading`, "Trading"}, {`trader`, "Trading"}, {`signals?`, "Trading"},
 	}
 	rules := make([]keywordRule, 0, len(specs))
 	for _, s := range specs {
@@ -249,7 +262,10 @@ var keywordRules = func() []keywordRule {
 }()
 
 func (c *Categorizer) classifyKeyword(name, screenName, bio, tweets string) string {
-	text := strings.ToLower(name + " " + screenName + " " + bio + " " + tweets)
+	// Deliberately exclude the username: a handle like "imho_nft" or "h1jpeg"
+	// would otherwise force a wrong category. Match on display name + bio + tweets.
+	_ = screenName
+	text := strings.ToLower(name + " " + bio + " " + tweets)
 	for _, r := range keywordRules {
 		if r.re.MatchString(text) {
 			return r.cat

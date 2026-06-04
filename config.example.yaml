@@ -51,6 +51,7 @@ categorization:
   # How many recent tweets to fetch when use_tweets is on.
   tweet_count: 5
   # Base taxonomy. The LLM prefers these but may add a new one when nothing fits.
+  # KOL = an individual person (influencer/alpha caller/commentator), not a project.
   categories:
     - AI
     - Layer 1
@@ -63,6 +64,9 @@ categorization:
     - RWA
     - Infra
     - Social
+    - KOL
+    - Trading
+    - Other
   # How long a categorized handle stays cached before being re-checked.
   cache_ttl: 168h  # 7 days
   # File holding OpenRouter API keys (one per line). Recommended place for keys
@@ -72,11 +76,15 @@ categorization:
     # Keys can also be listed here, but llm.txt is preferred. Multiple keys are
     # rotated round-robin. If no keys at all, categorization uses keywords only.
     api_keys: []
-    # Free-tier models, tried in order until one succeeds.
+    # Free-tier models, tried in order until one succeeds. NOTE: OpenRouter's
+    # free model names change often — if you get HTTP 404s, update this list from
+    # https://openrouter.ai/models?max_price=0
     models:
-      - "meta-llama/llama-3.3-70b-instruct:free"
-      - "google/gemini-2.0-flash-exp:free"
-      - "deepseek/deepseek-chat-v3-0324:free"
+      - "openai/gpt-oss-120b:free"
+      - "z-ai/glm-4.5-air:free"
+      - "openai/gpt-oss-20b:free"
+      - "poolside/laguna-m.1:free"
+      - "poolside/laguna-xs.2:free"
 
 logging:
   timezone: Asia/Jakarta

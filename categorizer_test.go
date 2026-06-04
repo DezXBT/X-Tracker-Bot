@@ -40,6 +40,47 @@ func TestClassifyKeywordUsesTweets(t *testing.T) {
 	}
 }
 
+func TestClassifyKeywordIgnoresUsername(t *testing.T) {
+	c := newTestCategorizer()
+	// A handle like "imho_nft" must NOT force NFT — the username is not matched.
+	if got := c.classifyKeyword("imho", "imho_nft", "", ""); got == "NFT" {
+		t.Errorf("username should not drive category, got %q", got)
+	}
+	// "jpeg" in a handle must not trigger anything either.
+	if got := c.classifyKeyword("", "h1jpeg", "", ""); got != "" {
+		t.Errorf("expected no keyword match from username, got %q", got)
+	}
+}
+
+func TestClassifyKeywordTrading(t *testing.T) {
+	c := newTestCategorizer()
+	if got := c.classifyKeyword("", "", "daily trading signals", ""); got != "Trading" {
+		t.Errorf("expected Trading, got %q", got)
+	}
+}
+
+func TestMaybeResetCategoryCache(t *testing.T) {
+	s := NewState()
+	s.SetCachedCategory("alice", "DeFi")
+	s.SetCachedCategory("bob", "NFT")
+
+	// Different version → clears and reports count.
+	if n := s.MaybeResetCategoryCache(1); n != 2 {
+		t.Fatalf("first reset: cleared %d, want 2", n)
+	}
+	if len(s.CategoryCache) != 0 {
+		t.Fatalf("cache not cleared: %d entries", len(s.CategoryCache))
+	}
+	// Same version → no-op.
+	s.SetCachedCategory("carol", "Meme")
+	if n := s.MaybeResetCategoryCache(1); n != 0 {
+		t.Fatalf("second reset (same version): cleared %d, want 0", n)
+	}
+	if _, ok := s.GetCachedCategory("carol", time.Hour); !ok {
+		t.Fatalf("entry wrongly cleared on same-version reset")
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	c := newTestCategorizer()
 	cases := []struct{ in, want string }{

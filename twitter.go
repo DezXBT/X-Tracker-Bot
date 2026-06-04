@@ -58,6 +58,19 @@ var defaultFeatures = map[string]bool{
 	"responsive_web_grok_analyze_button_fetch_trends_enabled":                 true,
 	"rweb_video_screen_enabled":                                               true,
 	"responsive_web_jetfuel_frame":                                            true,
+	// Added so newer operations (e.g. UserTweets) aren't rejected for missing
+	// required features. Extra features are ignored by operations that don't use
+	// them, so this is safe for Following/UserByScreenName too.
+	"rweb_cashtags_enabled":                                          true,
+	"responsive_web_profile_redirect_enabled":                        true,
+	"rweb_cashtags_composer_attachment_enabled":                      true,
+	"responsive_web_grok_annotations_enabled":                        true,
+	"rweb_conversational_replies_downvote_enabled":                   true,
+	"content_disclosure_indicator_enabled":                           true,
+	"content_disclosure_ai_generated_indicator_enabled":              true,
+	"post_ctas_fetch_enabled":                                        true,
+	"responsive_web_grok_imagine_annotation_enabled":                 true,
+	"responsive_web_grok_community_note_auto_translation_is_enabled": true,
 }
 
 // User represents a Twitter user profile

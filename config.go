@@ -76,6 +76,7 @@ type Config struct {
 var defaultCategories = []string{
 	"AI", "Layer 1", "Layer 2", "DeFi", "NFT", "Gaming",
 	"Meme", "DePIN", "RWA", "Infra", "Social",
+	"KOL", "Trading", "Other",
 }
 
 func (c *Config) PollIntervalDuration() time.Duration {

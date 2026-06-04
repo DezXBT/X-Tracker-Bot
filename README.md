@@ -265,7 +265,7 @@ Press `Ctrl + C` to stop the bot — it saves its state cleanly before exiting.
 
 > 💡 **This step is optional.** Skip it and the bot works exactly like the classic version (raw alerts only). Turn it on to label every follow by **project category** and get an **hourly digest**.
 
-The bot can categorize each followed account (AI, Layer 2, DeFi, NFT, Meme…) using a Large Language Model via **[OpenRouter](https://openrouter.ai)** — which offers **free-tier models**. Here's how to set it up:
+The bot can categorize each followed account (AI, Layer 2, DeFi, NFT, Meme, KOL…) using a Large Language Model via **[OpenRouter](https://openrouter.ai)** — which offers **free-tier models**. It judges from the bio + recent tweets (not the username), and uses **KOL** for individual people (influencers/alpha callers) rather than forcing them into a project category. Here's how to set it up:
 
 **1. Get one (or more) OpenRouter API keys**
 
@@ -319,12 +319,17 @@ categorization:
     - RWA
     - Infra
     - Social
+    - KOL                         # an individual person (influencer/alpha caller), not a project
+    - Trading
+    - Other
   openrouter:
     api_keys: []                  # optional; prefer llm.txt. Merged with keys from the file
     models:                       # free-tier models, tried in order until one works
-      - "meta-llama/llama-3.3-70b-instruct:free"
-      - "google/gemini-2.0-flash-exp:free"
-      - "deepseek/deepseek-chat-v3-0324:free"
+      - "openai/gpt-oss-120b:free"
+      - "z-ai/glm-4.5-air:free"
+      - "openai/gpt-oss-20b:free"
+      # Free model names change often — if you get 404s, refresh from
+      # https://openrouter.ai/models?max_price=0
 ```
 
 **How it degrades gracefully:**
@@ -379,10 +384,10 @@ categorization:
   tweet_count: 5               # how many recent tweets to fetch
   cache_ttl: 168h              # how long a category is cached (7 days)
   keys_file: llm.txt           # OpenRouter API keys, one per line (preferred over inline)
-  categories: [AI, Layer 2, DeFi, NFT, Meme, ...]   # base taxonomy (LLM may extend)
+  categories: [AI, Layer 2, DeFi, NFT, Meme, KOL, Trading, Other, ...]  # taxonomy (LLM may extend)
   openrouter:
     api_keys: []               # optional inline keys; merged with llm.txt. None = keyword-only
-    models: ["meta-llama/llama-3.3-70b-instruct:free", "..."]  # tried in order
+    models: ["openai/gpt-oss-120b:free", "z-ai/glm-4.5-air:free", "..."]  # tried in order
 
 # Logging
 logging:

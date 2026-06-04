@@ -53,6 +53,13 @@ func main() {
 	// Load state
 	state := LoadState(statePath)
 
+	// One-time category cache reset after a taxonomy/prompt change, so stale
+	// (possibly mis-categorized) entries get re-evaluated with the new logic.
+	if n := state.MaybeResetCategoryCache(categoryCacheVersion); n > 0 {
+		logInfo("category cache reset for updated taxonomy (%d entries cleared)", n)
+		state.Save(statePath)
+	}
+
 	// Load OpenRouter API keys from file (merged with any set in config.yaml)
 	llmPath := cfg.Categorization.KeysFile
 	if !filepath.IsAbs(llmPath) {
