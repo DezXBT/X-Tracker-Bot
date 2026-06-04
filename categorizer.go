@@ -116,7 +116,11 @@ func (c *Categorizer) buildPrompt(name, screenName, bio, tweets string) string {
 			"(\"Core Member @x\", \"building @y\"), \"DM for collabs\".\n"+
 			"PROJECT = a product, protocol, company, token, DAO, or official team account. "+
 			"Signals: \"we/our\", \"the first...\", \"decentralized...\", a $TICKER, "+
-			"\"mainnet/testnet\", a community or product being promoted.\n\n"+
+			"\"mainnet/testnet\", a community or product being promoted.\n"+
+			"The RECENT TWEETS reveal this strongly via WRITING STYLE: personal opinions, "+
+			"replies, jokes, \"gm\", \"I/my\" => a PERSON; product announcements, \"we shipped\", "+
+			"release notes, \"join our community\" => a PROJECT. How much they tweet about a "+
+			"topic does NOT change this — a person who tweets about AI all day is still KOL.\n\n"+
 			"STEP 2 — Pick the category:\n"+
 			"- If it is a PERSON -> answer KOL. The topic does NOT matter: an individual who "+
 			"works on AI, DeFi, gaming, etc. is still KOL, NOT that topic.\n"+

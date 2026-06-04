@@ -48,8 +48,9 @@ categorization:
   # Use recent tweets as an extra signal (one extra API call per uncached
   # target). Set false to categorize from username + name + bio only.
   use_tweets: true
-  # How many recent tweets to fetch when use_tweets is on.
-  tweet_count: 5
+  # How many recent ORIGINAL tweets to fetch when use_tweets is on (retweets are
+  # skipped). More tweets = better person-vs-project signal, at a bit more cost.
+  tweet_count: 8
   # Base taxonomy. The LLM prefers these but may add a new one when nothing fits.
   # KOL = an individual person (influencer/alpha caller/commentator), not a project.
   categories:

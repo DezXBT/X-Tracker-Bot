@@ -13,7 +13,7 @@ import (
 // categoryCacheVersion is bumped whenever the categorization taxonomy or prompt
 // changes in a way that should invalidate previously cached categories. On load,
 // a mismatch triggers a one-time cache reset (see MaybeResetCategoryCache).
-const categoryCacheVersion = 2
+const categoryCacheVersion = 3
 
 type State struct {
 	ByWatcher            map[string][]string      `json:"byWatcher"`

@@ -286,7 +286,7 @@ func loadConfig(path string) (*Config, error) {
 		cfg.Categorization.Categories = defaultCategories
 	}
 	if cfg.Categorization.TweetCount == 0 {
-		cfg.Categorization.TweetCount = 5
+		cfg.Categorization.TweetCount = 8
 	}
 	if cfg.Categorization.KeysFile == "" {
 		cfg.Categorization.KeysFile = "llm.txt"

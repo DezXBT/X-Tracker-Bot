@@ -205,7 +205,7 @@ func parseTweetsText(data map[string]interface{}, maxTweets int) string {
 	var texts []string
 	collectFullText(data, &texts, maxTweets)
 	joined := strings.Join(texts, " | ")
-	return truncateRunes(joined, 1000)
+	return truncateRunes(joined, 1600)
 }
 
 func collectFullText(v interface{}, out *[]string, limit int) {
@@ -214,7 +214,9 @@ func collectFullText(v interface{}, out *[]string, limit int) {
 	}
 	switch t := v.(type) {
 	case map[string]interface{}:
-		if ft, ok := t["full_text"].(string); ok && ft != "" {
+		// Skip retweets: a "RT @user: ..." entry is someone else's content and
+		// pollutes the categorization signal — we only want the account's own voice.
+		if ft, ok := t["full_text"].(string); ok && ft != "" && !strings.HasPrefix(ft, "RT @") {
 			*out = append(*out, ft)
 			if len(*out) >= limit {
 				return

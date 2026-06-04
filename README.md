@@ -304,7 +304,7 @@ discord:
 categorization:
   enabled: true
   use_tweets: true                # also read recent tweets as a signal (1 extra API call per new account)
-  tweet_count: 5
+  tweet_count: 8                  # original tweets to read (retweets skipped)
   cache_ttl: 168h                 # remember a category for 7 days (saves quota)
   keys_file: llm.txt              # where OpenRouter API keys are read from
   categories:                     # base taxonomy — the LLM may add new ones when nothing fits
@@ -381,7 +381,7 @@ discord:
 categorization:
   enabled: true                # false = disable (raw alerts still work)
   use_tweets: true             # read recent tweets as an extra signal
-  tweet_count: 5               # how many recent tweets to fetch
+  tweet_count: 8               # how many recent original tweets to fetch (retweets skipped)
   cache_ttl: 168h              # how long a category is cached (7 days)
   keys_file: llm.txt           # OpenRouter API keys, one per line (preferred over inline)
   categories: [AI, Layer 2, DeFi, NFT, Meme, KOL, Trading, Other, ...]  # taxonomy (LLM may extend)
