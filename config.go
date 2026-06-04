@@ -37,9 +37,11 @@ type OpenRouterConfig struct {
 }
 
 type CategorizationConfig struct {
-	// Enabled defaults to true when omitted (pointer lets us tell "unset" apart
-	// from an explicit false).
+	// Enabled and UseTweets default to true when omitted (pointer lets us tell
+	// "unset" apart from an explicit false).
 	Enabled    *bool            `yaml:"enabled"`
+	UseTweets  *bool            `yaml:"use_tweets"`
+	TweetCount int              `yaml:"tweet_count"`
 	Categories []string         `yaml:"categories"`
 	CacheTTL   string           `yaml:"cache_ttl"`
 	OpenRouter OpenRouterConfig `yaml:"openrouter"`
@@ -108,6 +110,15 @@ func (c *Config) CategorizationEnabled() bool {
 		return true
 	}
 	return *c.Categorization.Enabled
+}
+
+// UseTweetsEnabled reports whether recent tweets are used as a categorization
+// signal (default true). Costs one extra API call per uncached target.
+func (c *Config) UseTweetsEnabled() bool {
+	if c.Categorization.UseTweets == nil {
+		return true
+	}
+	return *c.Categorization.UseTweets
 }
 
 func (c *Config) Timezone() *time.Location {
@@ -208,6 +219,9 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if len(cfg.Categorization.Categories) == 0 {
 		cfg.Categorization.Categories = defaultCategories
+	}
+	if cfg.Categorization.TweetCount == 0 {
+		cfg.Categorization.TweetCount = 5
 	}
 
 	return cfg, nil

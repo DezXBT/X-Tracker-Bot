@@ -15,13 +15,7 @@ import (
 
 const bearerToken = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
 
-// Query IDs (from xreach-cli fallback — update when X changes them)
-var queryIDs = map[string]string{
-	"UserByScreenName": "1VOOyvKkiI3FMmkeDNxM9A",
-	"UserByRestId":     "tD8zKvQzwY3kdx5yz6YmOw",
-	"Following":        "zx6e-TLzRkeDO_a7p4b3JQ",
-	"Followers":        "IOh4aS6UdGWGJUYTqliQ7Q",
-}
+// Query IDs live in queryid.go and are refreshed from x.com at startup.
 
 var defaultFeatures = map[string]bool{
 	"rweb_tipjar_consumption_enabled":                                     true,
@@ -170,9 +164,65 @@ func (tc *TwitterClient) GetFollowing(userID string, count int, cursor string) (
 	return parseUserList(data)
 }
 
+// GetUserTweets fetches recent tweet text for a user by rest_id and returns it
+// joined into a single string (used as extra signal for categorization).
+func (tc *TwitterClient) GetUserTweets(userID string, count int) (string, error) {
+	if count <= 0 {
+		count = 5
+	}
+	variables := map[string]interface{}{
+		"userId":                                 userID,
+		"count":                                  count,
+		"includePromotedContent":                 false,
+		"withQuickPromoteEligibilityTweetFields": false,
+		"withVoice":                              true,
+		"withV2Timeline":                         true,
+	}
+	data, err := tc.graphql("UserTweets", variables, false)
+	if err != nil {
+		return "", err
+	}
+	return parseTweetsText(data, count), nil
+}
+
+// parseTweetsText recursively collects up to maxTweets "full_text" values from a
+// UserTweets response. Walking the tree (rather than the exact timeline path)
+// keeps this resilient to X's frequent structure changes.
+func parseTweetsText(data map[string]interface{}, maxTweets int) string {
+	var texts []string
+	collectFullText(data, &texts, maxTweets)
+	joined := strings.Join(texts, " | ")
+	if len(joined) > 1000 {
+		joined = joined[:1000]
+	}
+	return joined
+}
+
+func collectFullText(v interface{}, out *[]string, limit int) {
+	if len(*out) >= limit {
+		return
+	}
+	switch t := v.(type) {
+	case map[string]interface{}:
+		if ft, ok := t["full_text"].(string); ok && ft != "" {
+			*out = append(*out, ft)
+			if len(*out) >= limit {
+				return
+			}
+		}
+		for _, val := range t {
+			collectFullText(val, out, limit)
+		}
+	case []interface{}:
+		for _, val := range t {
+			collectFullText(val, out, limit)
+		}
+	}
+}
+
 // graphql sends a GraphQL request to X's API.
 func (tc *TwitterClient) graphql(operationName string, variables map[string]interface{}, usePost bool) (map[string]interface{}, error) {
-	qid, ok := queryIDs[operationName]
+	qid, ok := queryID(operationName)
 	if !ok {
 		return nil, fmt.Errorf("unknown operation: %s", operationName)
 	}

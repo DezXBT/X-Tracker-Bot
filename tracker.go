@@ -46,15 +46,44 @@ func NewTracker(cfg *Config, accounts []string, state *State, eventsPath, stateP
 }
 
 // categorize resolves a target's project category, using the cache first and
-// falling back to the categorizer (LLM + keywords) on a miss.
-func (t *Tracker) categorize(screenName, name, bio string) string {
+// falling back to the categorizer (LLM + keywords) on a miss. On a miss it may
+// also fetch the target's recent tweets as an extra signal.
+func (t *Tracker) categorize(target User) string {
 	ttl := t.cfg.CacheTTLDuration()
-	if cat, ok := t.state.GetCachedCategory(screenName, ttl); ok {
+	if cat, ok := t.state.GetCachedCategory(target.ScreenName, ttl); ok {
 		return cat
 	}
-	cat := t.categorizer.Categorize(name, screenName, bio)
-	t.state.SetCachedCategory(screenName, cat)
+
+	tweetText := ""
+	if t.cfg.CategorizationEnabled() && t.cfg.UseTweetsEnabled() && target.RestID != "" {
+		if txt, err := t.getUserTweetsWithRetry(target.RestID, t.cfg.Categorization.TweetCount); err != nil {
+			logWarn("[categorize] fetch tweets @%s failed: %v", target.ScreenName, err)
+		} else {
+			tweetText = txt
+		}
+	}
+
+	cat := t.categorizer.Categorize(target.Name, target.ScreenName, target.Description, tweetText)
+	t.state.SetCachedCategory(target.ScreenName, cat)
 	return cat
+}
+
+// getUserTweetsWithRetry fetches recent tweet text, rotating across clients on
+// auth errors.
+func (t *Tracker) getUserTweetsWithRetry(userID string, count int) (string, error) {
+	var lastErr error
+	for i := 0; i < len(t.clients); i++ {
+		txt, err := t.nextClient().GetUserTweets(userID, count)
+		if err == nil {
+			return txt, nil
+		}
+		lastErr = err
+		if !isAuthError(err) {
+			return "", err
+		}
+		logWarn("[client] auth error on GetUserTweets, rotating: %v", err)
+	}
+	return "", fmt.Errorf("all clients failed for GetUserTweets: %w", lastErr)
 }
 
 // nextClient returns the next client in round-robin order.
@@ -200,8 +229,8 @@ func (t *Tracker) ScanOnce() {
 			profileImageURL := targetData.ProfileImageURL
 			name := targetData.Name
 
-			// Resolve the project category (cached → LLM → keyword fallback).
-			category := t.categorize(targetScreen, name, bio)
+			// Resolve the project category (cached → LLM + tweets → keyword fallback).
+			category := t.categorize(targetData)
 
 			// Send webhook alert
 			err := t.webhook.SendFollowAlert(

@@ -37,6 +37,11 @@ discord:
 categorization:
   # Set false to disable categorization (raw alerts still work).
   enabled: true
+  # Use recent tweets as an extra signal (one extra API call per uncached
+  # target). Set false to categorize from username + name + bio only.
+  use_tweets: true
+  # How many recent tweets to fetch when use_tweets is on.
+  tweet_count: 5
   # Base taxonomy. The LLM prefers these but may add a new one when nothing fits.
   categories:
     - AI

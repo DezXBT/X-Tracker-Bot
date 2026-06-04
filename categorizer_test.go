@@ -21,10 +21,19 @@ func TestClassifyKeyword(t *testing.T) {
 		{"Random", "randomguy", "just a person", ""},
 	}
 	for _, tc := range cases {
-		got := c.classifyKeyword(tc.name, tc.screen, tc.bio)
+		got := c.classifyKeyword(tc.name, tc.screen, tc.bio, "")
 		if got != tc.want {
 			t.Errorf("classifyKeyword(%q,%q,%q) = %q, want %q", tc.name, tc.screen, tc.bio, got, tc.want)
 		}
+	}
+}
+
+func TestClassifyKeywordUsesTweets(t *testing.T) {
+	c := newTestCategorizer()
+	// No signal in name/screen/bio, but tweets mention gaming.
+	got := c.classifyKeyword("Foo", "foo", "", "just launched our gamefi season")
+	if got != "Gaming" {
+		t.Errorf("expected Gaming from tweets, got %q", got)
 	}
 }
 

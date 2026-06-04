@@ -50,15 +50,16 @@ func (c *Categorizer) nextKey() string {
 }
 
 // Categorize returns the best category for an account. It tries the LLM first,
-// then keyword matching, and finally returns UncategorizedLabel.
-func (c *Categorizer) Categorize(name, screenName, bio string) string {
+// then keyword matching, and finally returns UncategorizedLabel. tweets is
+// optional recent tweet text used as an extra signal.
+func (c *Categorizer) Categorize(name, screenName, bio, tweets string) string {
 	if !c.enabled {
 		return UncategorizedLabel
 	}
-	if cat := c.classifyLLM(name, screenName, bio); cat != "" {
+	if cat := c.classifyLLM(name, screenName, bio, tweets); cat != "" {
 		return cat
 	}
-	if cat := c.classifyKeyword(name, screenName, bio); cat != "" {
+	if cat := c.classifyKeyword(name, screenName, bio, tweets); cat != "" {
 		return cat
 	}
 	return UncategorizedLabel
@@ -68,12 +69,12 @@ func (c *Categorizer) Categorize(name, screenName, bio string) string {
 // LLM classification (OpenRouter)
 // ──────────────────────────────────────────────────────────────────────────────
 
-func (c *Categorizer) classifyLLM(name, screenName, bio string) string {
+func (c *Categorizer) classifyLLM(name, screenName, bio, tweets string) string {
 	if len(c.apiKeys) == 0 || len(c.models) == 0 {
 		return ""
 	}
 
-	prompt := c.buildPrompt(name, screenName, bio)
+	prompt := c.buildPrompt(name, screenName, bio, tweets)
 
 	// Try each API key once; for each key walk the model list until one works.
 	for attempt := 0; attempt < len(c.apiKeys); attempt++ {
@@ -92,17 +93,21 @@ func (c *Categorizer) classifyLLM(name, screenName, bio string) string {
 	return ""
 }
 
-func (c *Categorizer) buildPrompt(name, screenName, bio string) string {
+func (c *Categorizer) buildPrompt(name, screenName, bio, tweets string) string {
 	if bio == "" {
 		bio = "(no bio)"
+	}
+	tweetLine := ""
+	if tweets != "" {
+		tweetLine = fmt.Sprintf("\nRecent tweets: %s", tweets)
 	}
 	return fmt.Sprintf(
 		"Classify this X (Twitter) crypto/web3 account into ONE project category.\n"+
 			"Prefer one of these categories: %s.\n"+
 			"If none fits, you may answer with a short new category (1-3 words).\n"+
 			"Reply with ONLY the category name, nothing else.\n\n"+
-			"Username: @%s\nName: %s\nBio: %s",
-		strings.Join(c.categories, ", "), screenName, name, bio,
+			"Username: @%s\nName: %s\nBio: %s%s",
+		strings.Join(c.categories, ", "), screenName, name, bio, tweetLine,
 	)
 }
 
@@ -237,8 +242,8 @@ var keywordRules = func() []keywordRule {
 	return rules
 }()
 
-func (c *Categorizer) classifyKeyword(name, screenName, bio string) string {
-	text := strings.ToLower(name + " " + screenName + " " + bio)
+func (c *Categorizer) classifyKeyword(name, screenName, bio, tweets string) string {
+	text := strings.ToLower(name + " " + screenName + " " + bio + " " + tweets)
 	for _, r := range keywordRules {
 		if r.re.MatchString(text) {
 			return r.cat
