@@ -229,7 +229,7 @@ func (tg *TransactionGenerator) computeAnimationKey(html string) (string, error)
 	}
 
 	// Apply JS Math.round behavior
-	frameTimeF := jsRound(float64(frameTime) / 10.0) * 10
+	frameTimeF := jsRound(float64(frameTime)/10.0) * 10
 	targetTime := float64(frameTimeF) / 4096.0
 
 	frameRow := selectedFrame[rowIdx]
@@ -359,7 +359,12 @@ func animate(frames []int, targetTime float64) string {
 		parts = append(parts, fmt.Sprintf("%x", int(math.RoundToEven(c))))
 	}
 
-	// 4 matrix values
+	// 4 matrix values. The reference builds these as
+	//   f"0{hex}".lower() if hex.startswith(".") else hex or "0"
+	// where its float_to_hex omits the leading "0" for fractions. Our
+	// floatToHex already includes that leading "0" (e.g. "0.1EB8…"), so the
+	// net result is simply the lowercased hex — which is what the reference's
+	// animation key ends up being.
 	for _, m := range matrix {
 		rounded := math.Round(m*100) / 100
 		if rounded < 0 {
@@ -368,12 +373,8 @@ func animate(frames []int, targetTime float64) string {
 		hexStr := floatToHex(rounded)
 		if hexStr == "" {
 			hexStr = "0"
-		} else if hexStr[0] == '.' {
-			hexStr = "0" + hexStr
-		} else {
-			hexStr = strings.ToLower(hexStr)
 		}
-		parts = append(parts, hexStr)
+		parts = append(parts, strings.ToLower(hexStr))
 	}
 
 	// Two trailing zeros
