@@ -246,20 +246,23 @@ func (t *Tracker) ScanOnce() {
 			// Resolve the project category (cached → LLM + tweets → keyword fallback).
 			category := t.categorize(targetData)
 
-			// Send webhook alert
-			err := t.webhook.SendFollowAlert(
+			// Send the raw alert. A failure here must NOT skip recording the
+			// follow below — otherwise the hourly summary (which reads the event
+			// log) would starve whenever raw delivery fails or raw_webhooks is
+			// empty for a summary-only setup.
+			if err := t.webhook.SendFollowAlert(
 				t.cfg.Discord.RawWebhooks,
 				watcher, targetScreen, bio, category, followersCount, profileImageURL,
 				t.cfg.Timezone(),
-			)
-			if err != nil {
+			); err != nil {
 				logError("[alert] failed %s: %v", pairKey, err)
-				continue
+			} else {
+				logInfo("[alert] sent %s [%s]", pairKey, category)
 			}
-			t.state.SentPairs[pairKey] = time.Now().UnixMilli()
-			logInfo("[alert] sent %s [%s]", pairKey, category)
 
-			// Append event
+			// Record the follow once it's detected, independent of raw delivery,
+			// so it appears in the summary and isn't reprocessed every scan.
+			t.state.SentPairs[pairKey] = time.Now().UnixMilli()
 			ev := MakeEvent(watcher, targetScreen, bio, name, category, followersCount, profileImageURL)
 			if err := AppendEvent(t.eventsPath, ev); err != nil {
 				logWarn("[event] failed to append: %v", err)

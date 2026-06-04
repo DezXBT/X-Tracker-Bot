@@ -218,6 +218,13 @@ func humanizeDuration(d time.Duration) string {
 }
 
 func (dw *DiscordWebhook) postToAll(urls []string, payload webhookPayload) error {
+	// No webhooks configured is not a failure — there is simply nothing to send.
+	// (Returning an error here would make a summary-only setup, with raw_webhooks
+	// empty, drop the event and starve the hourly summary.)
+	if len(urls) == 0 {
+		return nil
+	}
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
