@@ -293,6 +293,7 @@ discord:
     - "https://discord.com/api/webhooks/REALTIME_ALERTS"
   summary_webhook: "https://discord.com/api/webhooks/HOURLY_SUMMARY"  # leave empty to disable summaries
   summary_interval: 1h            # how often to post the digest
+  summary_dedup_ttl: 720h         # report each project once; re-eligible after this long (30d)
 
 categorization:
   enabled: true
@@ -363,6 +364,7 @@ discord:
     - "https://discord.com/api/webhooks/..."
   summary_webhook: "..."       # (optional) hourly category digest — empty = off
   summary_interval: 1h         # how often to post the digest
+  summary_dedup_ttl: 720h      # report each project only once (re-eligible after 30d)
 
 # (Optional) AI categorization — see Step 9 for the full walkthrough
 categorization:
@@ -471,6 +473,7 @@ screen -S x-tracker
 **Summary loop** (every `summary_interval`, runs in parallel)
 
 - Reads the last interval's events from `events.jsonl`, groups them by category, counts distinct watchers per target, and posts a digest to `summary_webhook`.
+- **De-duplicates across summaries:** a project that already appeared in a previous summary is skipped, so each project is reported **only once** (until `summary_dedup_ttl` elapses). If an interval has no new projects, no digest is sent.
 
 ### State Files
 
@@ -496,7 +499,7 @@ screen -S x-tracker
 | `command not found: go` | Go isn't installed — revisit [Step 1](#step-1--install-go) |
 | Everything shows as `Uncategorized` | No key in `llm.txt`, or all models failed/hit quota — add keys/models (see [Step 9](#step-9--optional-enable-ai-categorization--hourly-summary)) |
 | `openrouter ... failed: HTTP 404` | That free model name is gone — update the `models` list with a current one |
-| No hourly summary appears | Set `summary_webhook`; the digest only sends when there were follows in the interval |
+| No hourly summary appears | Set `summary_webhook`; the digest only sends when there are **new** projects (ones not already summarized) in the interval |
 | `query ID refresh failed` | Harmless — the bot uses built-in fallback IDs; check network if follows also fail |
 
 ---
@@ -535,6 +538,9 @@ It can be free. OpenRouter offers free-tier models (the ones ending in `:free`).
 
 **Does fetching tweets use extra X requests?**
 Yes — when `use_tweets: true`, each *newly seen* account costs one extra `UserTweets` call (drawn from the **same cookie pool** as the tracker). It only happens on a cache miss. Set `use_tweets: false` to categorize from name + bio only.
+
+**Why does a project only show up in the summary once?**
+By design — to keep the summary channel readable, each project is reported a single time. Once it's in a digest it's excluded from later ones until `summary_dedup_ttl` (default 30 days) passes, after which renewed interest can surface it again. The real-time raw alerts are unaffected; they still fire on every new follow.
 
 **The bot stopped finding follows after X updated — what do I do?**
 Usually nothing. The bot refreshes X's GraphQL query IDs from x.com at every startup, so a simple restart picks up X's latest changes automatically.

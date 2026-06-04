@@ -11,9 +11,10 @@ import (
 )
 
 type State struct {
-	ByWatcher     map[string][]string      `json:"byWatcher"`
-	SentPairs     map[string]int64         `json:"sentPairs"`
-	CategoryCache map[string]CategoryEntry `json:"categoryCache"`
+	ByWatcher         map[string][]string      `json:"byWatcher"`
+	SentPairs         map[string]int64         `json:"sentPairs"`
+	CategoryCache     map[string]CategoryEntry `json:"categoryCache"`
+	SummarizedTargets map[string]int64         `json:"summarizedTargets"`
 }
 
 // CategoryEntry is a cached categorization result for a single handle.
@@ -37,9 +38,10 @@ type Event struct {
 
 func NewState() *State {
 	return &State{
-		ByWatcher:     make(map[string][]string),
-		SentPairs:     make(map[string]int64),
-		CategoryCache: make(map[string]CategoryEntry),
+		ByWatcher:         make(map[string][]string),
+		SentPairs:         make(map[string]int64),
+		CategoryCache:     make(map[string]CategoryEntry),
+		SummarizedTargets: make(map[string]int64),
 	}
 }
 
@@ -58,6 +60,9 @@ func LoadState(statePath string) *State {
 	}
 	if s.CategoryCache == nil {
 		s.CategoryCache = make(map[string]CategoryEntry)
+	}
+	if s.SummarizedTargets == nil {
+		s.SummarizedTargets = make(map[string]int64)
 	}
 	return s
 }
@@ -113,6 +118,31 @@ func (s *State) PruneCategoryCache(ttl time.Duration) {
 	for k, e := range s.CategoryCache {
 		if e.Ts < cutoff {
 			delete(s.CategoryCache, k)
+		}
+	}
+}
+
+// IsSummarized reports whether a target has already appeared in a summary
+// within ttl, so it should be excluded from future summaries.
+func (s *State) IsSummarized(target string, ttl time.Duration) bool {
+	ts, ok := s.SummarizedTargets[strings.ToLower(target)]
+	if !ok {
+		return false
+	}
+	return time.Now().UnixMilli()-ts <= ttl.Milliseconds()
+}
+
+// MarkSummarized records that a target has been included in a summary.
+func (s *State) MarkSummarized(target string) {
+	s.SummarizedTargets[strings.ToLower(target)] = time.Now().UnixMilli()
+}
+
+// PruneSummarized drops summarized-target entries older than ttl.
+func (s *State) PruneSummarized(ttl time.Duration) {
+	cutoff := time.Now().Add(-ttl).UnixMilli()
+	for k, ts := range s.SummarizedTargets {
+		if ts < cutoff {
+			delete(s.SummarizedTargets, k)
 		}
 	}
 }

@@ -33,6 +33,9 @@ discord:
   summary_webhook: "https://discord.com/api/webhooks/YOUR_SUMMARY_WEBHOOK_HERE"
   # How often to post the summary (Go duration: 1h, 30m, 2h)
   summary_interval: 1h
+  # Once a project appears in a summary it is excluded from future summaries for
+  # this long, so each project is reported only once (keeps the channel clean).
+  summary_dedup_ttl: 720h  # 30 days
 
 categorization:
   # Set false to disable categorization (raw alerts still work).

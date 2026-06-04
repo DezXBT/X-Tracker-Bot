@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func newTestCategorizer() *Categorizer {
 	return &Categorizer{
@@ -52,6 +55,34 @@ func TestNormalize(t *testing.T) {
 		if got := c.normalize(tc.in); got != tc.want {
 			t.Errorf("normalize(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestFilterUnsummarized(t *testing.T) {
+	cats := []SummaryCategory{
+		{Name: "AI", Targets: []SummaryTarget{{Handle: "awp_project", Count: 3}, {Handle: "newai", Count: 1}}},
+		{Name: "Layer 2", Targets: []SummaryTarget{{Handle: "baseku", Count: 2}}},
+	}
+	state := NewState()
+	state.MarkSummarized("awp_project") // already reported before
+	state.MarkSummarized("baseku")      // already reported before
+
+	ttl := 30 * 24 * time.Hour
+	filtered, newTargets := filterUnsummarized(cats, state, ttl)
+
+	// Only "newai" is new; the AI category survives, Layer 2 drops entirely.
+	if len(newTargets) != 1 || newTargets[0] != "newai" {
+		t.Fatalf("expected [newai], got %v", newTargets)
+	}
+	if len(filtered) != 1 || filtered[0].Name != "AI" || len(filtered[0].Targets) != 1 {
+		t.Fatalf("expected only AI/newai kept, got %+v", filtered)
+	}
+
+	// After marking newai, a re-run yields nothing.
+	state.MarkSummarized("newai")
+	_, newTargets2 := filterUnsummarized(cats, state, ttl)
+	if len(newTargets2) != 0 {
+		t.Errorf("expected no new targets on re-run, got %v", newTargets2)
 	}
 }
 

@@ -25,6 +25,9 @@ type Tracker struct {
 	statePath   string
 	cookieIdx   int
 	mu          sync.Mutex
+	// stateMu serializes state mutations + saves between the scan loop and the
+	// summary loop, which run on separate goroutines.
+	stateMu sync.Mutex
 }
 
 func NewTracker(cfg *Config, accounts []string, state *State, eventsPath, statePath string, categorizer *Categorizer) *Tracker {
@@ -183,6 +186,11 @@ func (t *Tracker) Warmup() {
 
 // ScanOnce runs one scan cycle across all watchers.
 func (t *Tracker) ScanOnce() {
+	// Hold stateMu for the whole cycle so the summary loop can't read/write
+	// state or save mid-scan. Scans are infrequent, so the contention is fine.
+	t.stateMu.Lock()
+	defer t.stateMu.Unlock()
+
 	for _, watcher := range t.accounts {
 		logInfo("[scan] watcher @%s", watcher)
 
@@ -295,6 +303,9 @@ func (t *Tracker) RunSummaryLoop(ctx context.Context) {
 }
 
 func (t *Tracker) sendSummary(window time.Duration) {
+	t.stateMu.Lock()
+	defer t.stateMu.Unlock()
+
 	events, err := ReadRecentEvents(t.eventsPath, window)
 	if err != nil {
 		logWarn("[summary] read events: %v", err)
@@ -304,12 +315,51 @@ func (t *Tracker) sendSummary(window time.Duration) {
 		logInfo("[summary] nothing in last %s; skipping", window)
 		return
 	}
+
 	grouped := aggregateByCategory(events)
+
+	// Exclude targets already shown in a previous summary, so each project is
+	// reported at most once (per dedup TTL) — keeps the channel readable.
+	ttl := t.cfg.SummaryDedupTTLDuration()
+	grouped, newTargets := filterUnsummarized(grouped, t.state, ttl)
+	if len(newTargets) == 0 {
+		logInfo("[summary] no new projects since last summary; skipping")
+		return
+	}
+
 	if err := t.webhook.SendSummary(t.cfg.Discord.SummaryWebhook, grouped, window, t.cfg.Timezone()); err != nil {
 		logError("[summary] send failed: %v", err)
 		return
 	}
-	logInfo("[summary] sent (%d follows across %d categories)", len(events), len(grouped))
+
+	for _, h := range newTargets {
+		t.state.MarkSummarized(h)
+	}
+	t.state.PruneSummarized(ttl)
+	t.state.Save(t.statePath)
+	logInfo("[summary] sent (%d new projects across %d categories)", len(newTargets), len(grouped))
+}
+
+// filterUnsummarized removes targets already reported within ttl and drops any
+// category left empty. It returns the filtered categories and the list of new
+// target handles included.
+func filterUnsummarized(cats []SummaryCategory, state *State, ttl time.Duration) ([]SummaryCategory, []string) {
+	var out []SummaryCategory
+	var newTargets []string
+	for _, c := range cats {
+		var kept []SummaryTarget
+		for _, tgt := range c.Targets {
+			if state.IsSummarized(tgt.Handle, ttl) {
+				continue
+			}
+			kept = append(kept, tgt)
+			newTargets = append(newTargets, tgt.Handle)
+		}
+		if len(kept) > 0 {
+			out = append(out, SummaryCategory{Name: c.Name, Targets: kept})
+		}
+	}
+	return out, newTargets
 }
 
 // SummaryTarget is one followed account and how many distinct watchers followed

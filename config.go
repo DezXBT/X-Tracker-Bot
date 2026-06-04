@@ -29,6 +29,9 @@ type DiscordConfig struct {
 	RawWebhooks     []string `yaml:"raw_webhooks"`
 	SummaryWebhook  string   `yaml:"summary_webhook,omitempty"`
 	SummaryInterval string   `yaml:"summary_interval,omitempty"`
+	// SummaryDedupTTL is how long a target stays excluded from future summaries
+	// after first appearing in one (default 30 days).
+	SummaryDedupTTL string `yaml:"summary_dedup_ttl,omitempty"`
 }
 
 type OpenRouterConfig struct {
@@ -92,6 +95,16 @@ func (c *Config) SummaryIntervalDuration() time.Duration {
 	d, err := time.ParseDuration(c.Discord.SummaryInterval)
 	if err != nil {
 		return time.Hour
+	}
+	return d
+}
+
+// SummaryDedupTTLDuration is how long a target stays excluded from future
+// summaries after first appearing in one.
+func (c *Config) SummaryDedupTTLDuration() time.Duration {
+	d, err := time.ParseDuration(c.Discord.SummaryDedupTTL)
+	if err != nil {
+		return 30 * 24 * time.Hour
 	}
 	return d
 }
@@ -257,6 +270,9 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if cfg.Discord.SummaryInterval == "" {
 		cfg.Discord.SummaryInterval = "1h"
+	}
+	if cfg.Discord.SummaryDedupTTL == "" {
+		cfg.Discord.SummaryDedupTTL = "720h" // 30 days
 	}
 	if cfg.Categorization.CacheTTL == "" {
 		cfg.Categorization.CacheTTL = "168h" // 7 days
