@@ -186,22 +186,28 @@ The bot logs into X using two browser cookies: `auth_token` and `ct0`.
 ```yaml
 twitter:
   cookies:
-    - auth_token: "PASTE_YOUR_AUTH_TOKEN_HERE"
-      ct0: "PASTE_YOUR_CT0_HERE"
+    - { auth_token: "PASTE_YOUR_AUTH_TOKEN_HERE", ct0: "PASTE_YOUR_CT0_HERE" }
 ```
+
+> 💡 **Tip:** the `{ ... }` flow style keeps each cookie on one line, so you can't get the indentation wrong.
 
 > ⚠️ **Security warning:** These cookies grant full access to the X account. **Use a dedicated alt account, never your main account.** Never share your config file or commit it to GitHub.
 
-**Optional but recommended — add multiple cookies** to spread requests across accounts and avoid rate limits:
+**Optional but recommended — add multiple cookies** to spread requests across accounts and avoid rate limits (one per line):
 
 ```yaml
 twitter:
   cookies:
-    - auth_token: "account1_token"
-      ct0: "account1_ct0"
-    - auth_token: "account2_token"
-      ct0: "account2_ct0"
+    - { auth_token: "account1_token", ct0: "account1_ct0" }
+    - { auth_token: "account2_token", ct0: "account2_ct0" }
+    - { auth_token: "account3_token", ct0: "account3_ct0" }
+    - { auth_token: "account4_token", ct0: "account4_ct0" }
 ```
+
+> ✅ **Validate before running** to catch typos:
+> ```bash
+> python3 -c "import yaml; yaml.safe_load(open('config.yaml')); print('YAML OK')"
+> ```
 
 ---
 
@@ -339,11 +345,10 @@ categorization:
 All settings live in `config.yaml`:
 
 ```yaml
-# X / Twitter authentication
+# X / Twitter authentication (flow style { } keeps indentation foolproof)
 twitter:
   cookies:
-    - auth_token: "xxx"
-      ct0: "yyy"
+    - { auth_token: "xxx", ct0: "yyy" }
 
 # Path to the file listing accounts to watch
 watch_file: twitter.txt

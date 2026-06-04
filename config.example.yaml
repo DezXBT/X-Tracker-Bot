@@ -2,12 +2,13 @@
 # Copy this file to config.yaml and fill in your values
 
 twitter:
+  # One cookie per line in flow style { } — keeps indentation foolproof.
+  # Keep or remove lines to match how many accounts you have (1 is enough).
   cookies:
-    - auth_token: "your_auth_token_here"
-      ct0: "your_ct0_here"
-    # Add more cookie pairs for round-robin (optional)
-    # - auth_token: "second_auth_token"
-    #   ct0: "second_ct0"
+    - { auth_token: "AUTH_TOKEN_1", ct0: "CT0_1" }
+    - { auth_token: "AUTH_TOKEN_2", ct0: "CT0_2" }
+    - { auth_token: "AUTH_TOKEN_3", ct0: "CT0_3" }
+    - { auth_token: "AUTH_TOKEN_4", ct0: "CT0_4" }
 
 # File containing accounts to watch (one per line)
 # Supports: https://x.com/Handle, @Handle, Handle
