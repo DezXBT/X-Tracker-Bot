@@ -137,10 +137,9 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 	}
 
 	embed := webhookEmbed{
-		Title:       fmt.Sprintf("📊 Ringkasan %s Terakhir", humanizeDuration(window)),
-		Color:       0xFFD700,
-		Description: fmt.Sprintf("**%d akun** baru di **%d kategori**.\n`n×` = jumlah akun watchlist yang mem-follow.", len(included), len(fields)),
-		Fields:      fields,
+		Title:  fmt.Sprintf("📊 Summary · Last %s", humanizeDuration(window)),
+		Color:  0xFFD700,
+		Fields: fields,
 		Footer: &webhookFooter{
 			Text: fmt.Sprintf("X-Tracker-Bot | %s WIB", time.Now().In(loc).Format("02/01/2006, 15:04:05")),
 		},
@@ -199,16 +198,23 @@ func truncateRunes(s string, maxRunes int) string {
 	return string(r[:maxRunes])
 }
 
-// humanizeDuration renders common durations in Indonesian (e.g. "1 Jam").
+// humanizeDuration renders common durations in English (e.g. "1 Hour").
 func humanizeDuration(d time.Duration) string {
 	switch {
 	case d%time.Hour == 0:
-		return fmt.Sprintf("%d Jam", int(d/time.Hour))
+		if h := int(d / time.Hour); h == 1 {
+			return "1 Hour"
+		} else {
+			return fmt.Sprintf("%d Hours", h)
+		}
 	case d%time.Minute == 0:
-		return fmt.Sprintf("%d Menit", int(d/time.Minute))
-	default:
-		return d.String()
+		if m := int(d / time.Minute); m == 1 {
+			return "1 Minute"
+		} else {
+			return fmt.Sprintf("%d Minutes", m)
+		}
 	}
+	return d.String()
 }
 
 func (dw *DiscordWebhook) postToAll(urls []string, payload webhookPayload) error {
