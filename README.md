@@ -78,7 +78,7 @@ On top of the per-follow alerts, the bot can post an **hourly summary** that gro
 | **Real-Time Discord Alerts** | Rich embeds with profile link, bio, followers & avatar |
 | **AI Categorization** | Tags each followed account by project category (AI, Layer 2, DeFi, NFT…) via OpenRouter LLM + keyword fallback |
 | **Hourly Summary** | Posts a periodic digest grouped by category, counting how many watchers followed each target |
-| **Dynamic Query IDs** | Pulls X's GraphQL query IDs live at startup, so the bot keeps working when X rotates them |
+| **Dynamic Query IDs & Features** | Pulls X's GraphQL query IDs *and required feature flags* live at startup, so the bot keeps working when X rotates IDs or adds new mandatory features |
 | **Smart Category Cache** | Caches each account's category (7-day TTL) to conserve OpenRouter free-tier quota |
 | **Cookie Pool Rotation** | Use multiple X auth cookies with round-robin rotation to reduce rate limits |
 | **Auto Dedup** | Duplicate accounts in your watch list are removed automatically |
@@ -464,7 +464,7 @@ screen -S x-tracker
 
 **Startup**
 
-0. **Refresh query IDs** — Pulls X's current GraphQL query IDs from x.com's JS bundle (they rotate often), falling back to built-in values if offline.
+0. **Refresh query IDs & features** — Pulls X's current GraphQL query IDs *and required feature flags* from x.com's JS bundle (X rotates IDs and keeps adding mandatory features; a request missing one is rejected), falling back to built-in values if offline.
 
 **Main loop** (every `poll_interval`)
 
@@ -505,7 +505,8 @@ screen -S x-tracker
 | Everything shows as `Uncategorized` | No key in `llm.txt`, or all models failed/hit quota — add keys/models (see [Step 9](#step-9--optional-enable-ai-categorization--hourly-summary)) |
 | `openrouter ... failed: HTTP 404` | That free model name is gone — update the `models` list with a current one |
 | No hourly summary appears | Set `summary_webhook`; the digest only sends when there are **new** projects (ones not already summarized) in the interval |
-| `query ID refresh failed` | Harmless — the bot uses built-in fallback IDs; check network if follows also fail |
+| `bundle refresh failed` | Harmless if follows still work — the bot uses built-in fallback IDs/features; check network/outbound access to x.com if scans also fail |
+| Scans fail with `GraphQL error: ... features cannot be null` | X added a new mandatory feature; restart so the bot re-pulls the latest feature flags from x.com |
 
 ---
 

@@ -29,44 +29,75 @@ func queryID(operationName string) (string, bool) {
 }
 
 var (
-	mainBundleRe = regexp.MustCompile(`https://abs\.twimg\.com/responsive-web/client-web/main\.[a-f0-9]+\.js`)
-	queryIDRe    = regexp.MustCompile(`\{queryId:"([^"]+)",operationName:"([^"]+)"`)
+	mainBundleRe      = regexp.MustCompile(`https://abs\.twimg\.com/responsive-web/client-web/main\.[a-f0-9]+\.js`)
+	queryIDRe         = regexp.MustCompile(`\{queryId:"([^"]+)",operationName:"([^"]+)"`)
+	featureSwitchesRe = regexp.MustCompile(`featureSwitches:\[([^\]]*)\]`)
+	quotedStringRe    = regexp.MustCompile(`"([^"]+)"`)
 )
 
-// RefreshQueryIDs fetches x.com, locates the main JS bundle, and extracts the
-// current GraphQL queryId for every operation, overriding the built-in
-// fallbacks. Returns how many IDs were refreshed. Safe to ignore the error:
-// on failure the built-in fallbacks remain in effect.
-func RefreshQueryIDs() (int, error) {
+// RefreshFromBundle fetches x.com, locates the main JS bundle, and refreshes
+// both the GraphQL query IDs and the required feature flags from it. X rotates
+// query IDs and keeps adding new mandatory features; a request missing a
+// required feature is rejected ("features cannot be null"), which is why this
+// runs at startup. Returns how many query IDs were applied and how many new
+// features were added. On error the built-in fallbacks remain in effect.
+func RefreshFromBundle() (queryIDsApplied int, featuresAdded int, err error) {
 	html, err := fetchURL("https://x.com", map[string]string{
 		"User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
 		"Accept-Language": "en-US,en;q=0.9",
 	})
 	if err != nil {
-		return 0, fmt.Errorf("fetch x.com: %w", err)
+		return 0, 0, fmt.Errorf("fetch x.com: %w", err)
 	}
 
 	bundleURL := mainBundleRe.FindString(html)
 	if bundleURL == "" {
-		return 0, fmt.Errorf("main bundle URL not found in HTML")
+		return 0, 0, fmt.Errorf("main bundle URL not found in HTML")
 	}
 
 	js, err := fetchURL(bundleURL, nil)
 	if err != nil {
-		return 0, fmt.Errorf("fetch main bundle %s: %w", bundleURL, err)
+		return 0, 0, fmt.Errorf("fetch main bundle %s: %w", bundleURL, err)
 	}
 
-	matches := queryIDRe.FindAllStringSubmatch(js, -1)
-	if len(matches) == 0 {
-		return 0, fmt.Errorf("no query IDs found in main bundle")
+	// Query IDs (operationName → queryId).
+	if idMatches := queryIDRe.FindAllStringSubmatch(js, -1); len(idMatches) > 0 {
+		queryIDMu.Lock()
+		for _, m := range idMatches {
+			queryIDs[m[2]] = m[1]
+			queryIDsApplied++
+		}
+		queryIDMu.Unlock()
 	}
 
-	queryIDMu.Lock()
-	defer queryIDMu.Unlock()
-	count := 0
-	for _, m := range matches {
-		queryIDs[m[2]] = m[1] // operationName → queryId
-		count++
+	// Feature flags: add any required feature we don't already send (as true).
+	// Existing values are preserved so deliberately-false flags stay false.
+	featuresAdded = mergeBundleFeatures(js)
+
+	if queryIDsApplied == 0 && featuresAdded == 0 {
+		return 0, 0, fmt.Errorf("no query IDs or features found in main bundle")
 	}
-	return count, nil
+	return queryIDsApplied, featuresAdded, nil
+}
+
+// mergeBundleFeatures collects the union of featureSwitches across every
+// operation in the bundle and adds the ones missing from defaultFeatures.
+// It is called once at startup, before request goroutines run.
+func mergeBundleFeatures(js string) int {
+	added := 0
+	seen := make(map[string]bool)
+	for _, fs := range featureSwitchesRe.FindAllStringSubmatch(js, -1) {
+		for _, q := range quotedStringRe.FindAllStringSubmatch(fs[1], -1) {
+			name := q[1]
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if _, exists := defaultFeatures[name]; !exists {
+				defaultFeatures[name] = true
+				added++
+			}
+		}
+	}
+	return added
 }

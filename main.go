@@ -77,12 +77,13 @@ func main() {
 		cfg.CategorizationEnabled(), len(cfg.Categorization.OpenRouter.APIKeys), len(cfg.Categorization.OpenRouter.Models))
 	logInfo("summary webhook: %v (interval: %s)", cfg.Discord.SummaryWebhook != "", cfg.SummaryIntervalDuration())
 
-	// Refresh GraphQL query IDs from x.com (they rotate often). Non-fatal: on
-	// failure the built-in fallbacks remain in effect.
-	if n, err := RefreshQueryIDs(); err != nil {
-		logWarn("query ID refresh failed: %v (using built-in fallbacks)", err)
+	// Refresh GraphQL query IDs and required feature flags from x.com (X rotates
+	// query IDs and adds new mandatory features). Non-fatal: on failure the
+	// built-in fallbacks remain in effect.
+	if nIDs, nFeat, err := RefreshFromBundle(); err != nil {
+		logWarn("bundle refresh failed: %v (using built-in fallbacks)", err)
 	} else {
-		logInfo("refreshed %d GraphQL query IDs from x.com", n)
+		logInfo("refreshed %d GraphQL query IDs and added %d feature flags from x.com", nIDs, nFeat)
 	}
 
 	// Initialize X-Client-Transaction-Id generator (fetches x.com + ondemand JS).
