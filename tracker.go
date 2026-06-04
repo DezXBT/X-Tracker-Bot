@@ -383,8 +383,9 @@ func filterUnsummarized(cats []SummaryCategory, state *State, ttl time.Duration)
 // SummaryTarget is one followed account and how many distinct watchers followed
 // it within the summary window.
 type SummaryTarget struct {
-	Handle string
-	Count  int
+	Handle    string
+	Count     int
+	Followers int
 }
 
 // SummaryCategory groups targets under a project category.
@@ -399,6 +400,7 @@ func aggregateByCategory(events []Event) []SummaryCategory {
 	// category -> targetLower -> set of watchers
 	byCat := make(map[string]map[string]map[string]bool)
 	display := make(map[string]string) // targetLower -> original screen name
+	followers := make(map[string]int)  // targetLower -> highest followers seen
 
 	for _, e := range events {
 		cat := e.Category
@@ -420,13 +422,16 @@ func aggregateByCategory(events []Event) []SummaryCategory {
 		}
 		byCat[cat][tl][strings.ToLower(e.Watcher)] = true
 		display[tl] = e.Target
+		if e.FollowersCount != nil && *e.FollowersCount > followers[tl] {
+			followers[tl] = *e.FollowersCount
+		}
 	}
 
 	var cats []SummaryCategory
 	for cat, targets := range byCat {
 		var ts []SummaryTarget
 		for tl, watchers := range targets {
-			ts = append(ts, SummaryTarget{Handle: display[tl], Count: len(watchers)})
+			ts = append(ts, SummaryTarget{Handle: display[tl], Count: len(watchers), Followers: followers[tl]})
 		}
 		sort.Slice(ts, func(i, j int) bool {
 			if ts[i].Count != ts[j].Count {

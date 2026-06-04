@@ -111,7 +111,11 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 		}
 		var b strings.Builder
 		for _, t := range c.Targets {
-			fmt.Fprintf(&b, "`%d×` [@%s](https://x.com/%s)\n", t.Count, t.Handle, t.Handle)
+			fmt.Fprintf(&b, "`%d×` [@%s](https://x.com/%s)", t.Count, t.Handle, t.Handle)
+			if t.Followers > 0 {
+				fmt.Fprintf(&b, " · 👥 %s", formatCompact(t.Followers))
+			}
+			b.WriteByte('\n')
 		}
 		val := strings.TrimRight(b.String(), "\n")
 		if val == "" {
@@ -253,6 +257,19 @@ func (dw *DiscordWebhook) postToAll(urls []string, payload webhookPayload) error
 		logWarn("partial webhook failure: %d/%d", failCount, len(urls))
 	}
 	return nil
+}
+
+// formatCompact renders a follower count compactly: 1234 -> "1.2K",
+// 1_200_000 -> "1.2M". Keeps the summary lines short on the right side.
+func formatCompact(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1_000_000), ".0") + "M"
+	case n >= 1_000:
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1_000), ".0") + "K"
+	default:
+		return fmt.Sprintf("%d", n)
+	}
 }
 
 func formatNumber(n int) string {
