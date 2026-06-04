@@ -35,6 +35,7 @@ notification, twitter monitoring tool, follow tracking bot, go twitter bot.
   - [Step 6 — Get Your Discord Webhook URL](#step-6--get-your-discord-webhook-url)
   - [Step 7 — Add Accounts to Watch](#step-7--add-accounts-to-watch)
   - [Step 8 — Run the Bot](#step-8--run-the-bot)
+  - [Step 9 — (Optional) Enable AI Categorization & Hourly Summary](#step-9--optional-enable-ai-categorization--hourly-summary)
 - [Configuration Reference](#-configuration-reference)
 - [Running 24/7 (Keep It Always On)](#-running-247-keep-it-always-on)
 - [How It Works](#-how-it-works)
@@ -53,8 +54,11 @@ X-Tracker-Bot is a **follow-tracking bot for X / Twitter**. You give it a list o
 - ✅ **Who** followed **whom** (with clickable X profile links)
 - ✅ The new account's **follower count**
 - ✅ The new account's **bio**
+- ✅ The new account's **project category** (AI-powered — see below)
 - ✅ The new account's **profile picture** thumbnail
 - ✅ A precise **timestamp** in your timezone
+
+On top of the per-follow alerts, the bot can post an **hourly summary** that groups every new follow by **project category** (AI, Layer 2, DeFi, NFT, …) and shows how many of your watched accounts followed each target — so you instantly see what the crowd is piling into.
 
 **Common use cases:**
 
@@ -72,6 +76,10 @@ X-Tracker-Bot is a **follow-tracking bot for X / Twitter**. You give it a list o
 | Feature | Description |
 |---------|-------------|
 | **Real-Time Discord Alerts** | Rich embeds with profile link, bio, followers & avatar |
+| **AI Categorization** | Tags each followed account by project category (AI, Layer 2, DeFi, NFT…) via OpenRouter LLM + keyword fallback |
+| **Hourly Summary** | Posts a periodic digest grouped by category, counting how many watchers followed each target |
+| **Dynamic Query IDs** | Pulls X's GraphQL query IDs live at startup, so the bot keeps working when X rotates them |
+| **Smart Category Cache** | Caches each account's category (7-day TTL) to conserve OpenRouter free-tier quota |
 | **Cookie Pool Rotation** | Use multiple X auth cookies with round-robin rotation to reduce rate limits |
 | **Auto Dedup** | Duplicate accounts in your watch list are removed automatically |
 | **Skip Bad Users** | Suspended / deactivated accounts are skipped gracefully |
@@ -247,6 +255,68 @@ Press `Ctrl + C` to stop the bot — it saves its state cleanly before exiting.
 
 ---
 
+### Step 9 — (Optional) Enable AI Categorization & Hourly Summary
+
+> 💡 **This step is optional.** Skip it and the bot works exactly like the classic version (raw alerts only). Turn it on to label every follow by **project category** and get an **hourly digest**.
+
+The bot can categorize each followed account (AI, Layer 2, DeFi, NFT, Meme…) using a Large Language Model via **[OpenRouter](https://openrouter.ai)** — which offers **free-tier models**. Here's how to set it up:
+
+**1. Get one (or more) OpenRouter API keys**
+
+1. Sign up at [openrouter.ai](https://openrouter.ai).
+2. Go to **Keys** → **Create Key** and copy it (starts with `sk-or-v1-...`).
+3. *(Recommended)* Create **several keys** — the bot rotates them round-robin to spread the free-tier quota.
+
+**2. Add a summary webhook** (a second Discord webhook, see [Step 6](#step-6--get-your-discord-webhook-url)) — ideally a **separate channel** so digests don't clutter your real-time alerts.
+
+**3. Fill in the `categorization` and `summary` settings in `config.yaml`:**
+
+```yaml
+discord:
+  raw_webhooks:
+    - "https://discord.com/api/webhooks/REALTIME_ALERTS"
+  summary_webhook: "https://discord.com/api/webhooks/HOURLY_SUMMARY"  # leave empty to disable summaries
+  summary_interval: 1h            # how often to post the digest
+
+categorization:
+  enabled: true
+  use_tweets: true                # also read recent tweets as a signal (1 extra API call per new account)
+  tweet_count: 5
+  cache_ttl: 168h                 # remember a category for 7 days (saves quota)
+  categories:                     # base taxonomy — the LLM may add new ones when nothing fits
+    - AI
+    - Layer 1
+    - Layer 2
+    - DeFi
+    - NFT
+    - Gaming
+    - Meme
+    - DePIN
+    - RWA
+    - Infra
+    - Social
+  openrouter:
+    api_keys:                     # multiple keys are rotated round-robin
+      - "sk-or-v1-YOUR_KEY"
+    models:                       # free-tier models, tried in order until one works
+      - "meta-llama/llama-3.3-70b-instruct:free"
+      - "google/gemini-2.0-flash-exp:free"
+      - "deepseek/deepseek-chat-v3-0324:free"
+```
+
+**How it degrades gracefully:**
+
+| Situation | What happens |
+|-----------|--------------|
+| No OpenRouter keys | Falls back to **keyword matching** (still tags obvious categories) |
+| All LLM models fail / quota hit | Falls back to keyword matching, then `Uncategorized` |
+| `summary_webhook` empty | Summaries are disabled; raw alerts still work |
+| `enabled: false` | Categorization off entirely; behaves like the classic bot |
+
+> ⚠️ **Free-tier note:** OpenRouter's free models have daily limits, and the available model names change over time. List a few models as fallbacks, add multiple keys, and keep `cache_ttl` high so the same account isn't re-queried. If a model 404s, the bot just tries the next one.
+
+---
+
 ## ⚙️ Configuration Reference
 
 All settings live in `config.yaml`:
@@ -273,8 +343,21 @@ tracking:
 
 # Discord webhook(s)
 discord:
-  raw_webhooks:
+  raw_webhooks:                # real-time, per-follow alerts
     - "https://discord.com/api/webhooks/..."
+  summary_webhook: "..."       # (optional) hourly category digest — empty = off
+  summary_interval: 1h         # how often to post the digest
+
+# (Optional) AI categorization — see Step 9 for the full walkthrough
+categorization:
+  enabled: true                # false = disable (raw alerts still work)
+  use_tweets: true             # read recent tweets as an extra signal
+  tweet_count: 5               # how many recent tweets to fetch
+  cache_ttl: 168h              # how long a category is cached (7 days)
+  categories: [AI, Layer 2, DeFi, NFT, Meme, ...]   # base taxonomy (LLM may extend)
+  openrouter:
+    api_keys: ["sk-or-v1-..."] # rotated round-robin; empty = keyword-only fallback
+    models: ["meta-llama/llama-3.3-70b-instruct:free", "..."]  # tried in order
 
 # Logging
 logging:
@@ -339,29 +422,45 @@ screen -S x-tracker
 ## 🛠️ How It Works
 
 ```
-┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
-│  twitter.txt │────▶│   X-Tracker-Bot  │────▶│   Discord    │
-│  (watch list)│     │                  │     │   Webhook    │
-└──────────────┘     │  1. Warmup       │     └──────────────┘
-                     │  2. Scan follows │
-┌──────────────┐     │  3. Detect new   │     ┌──────────────┐
-│  X (Twitter) │◀───▶│  4. Send alert   │     │ state.json   │
-│  GraphQL API │     │  5. Save state   │────▶│ events.jsonl │
-└──────────────┘     └──────────────────┘     └──────────────┘
+┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
+│  twitter.txt │────▶│     X-Tracker-Bot    │────▶│  Discord (raw)   │
+│  (watch list)│     │                      │     │  per-follow alert│
+└──────────────┘     │  0. Refresh query IDs│     └──────────────────┘
+                     │  1. Warmup baseline  │
+┌──────────────┐     │  2. Scan follows     │     ┌──────────────────┐
+│  X (Twitter) │◀───▶│  3. Detect new       │     │  Discord (summary)│
+│  GraphQL API │     │  4. Categorize (LLM) │────▶│  hourly digest   │
+└──────┬───────┘     │  5. Alert + log      │     └──────────────────┘
+       │             │  6. Save state       │     ┌──────────────────┐
+┌──────▼───────┐     └──────────┬───────────┘     │ state.json       │
+│  OpenRouter  │◀───────────────┘                 │ events.jsonl     │
+│  (LLM, free) │                                  └──────────────────┘
+└──────────────┘
 ```
 
-1. **Warmup** — On first run, fetches all current follows as a baseline.
-2. **Scan** — Every `poll_interval`, fetches the latest follows for each watcher.
+**Startup**
+
+0. **Refresh query IDs** — Pulls X's current GraphQL query IDs from x.com's JS bundle (they rotate often), falling back to built-in values if offline.
+
+**Main loop** (every `poll_interval`)
+
+1. **Warmup** — On first run, fetches all current follows as a baseline (no spam).
+2. **Scan** — Fetches the latest follows for each watcher (rotating the cookie pool).
 3. **Detect** — Compares against the baseline to find *new* follows.
-4. **Alert** — Sends a Discord embed for each new follow.
-5. **Save** — Persists state to the `state/` directory.
+4. **Categorize** — On a cache miss, reads the target's name/bio (+ recent tweets) and asks the OpenRouter LLM for a category; result is cached for `cache_ttl`. Falls back to keyword matching when no LLM is available.
+5. **Alert + log** — Sends a Discord embed (with category) and appends the follow to `events.jsonl`.
+6. **Save** — Persists state to the `state/` directory.
+
+**Summary loop** (every `summary_interval`, runs in parallel)
+
+- Reads the last interval's events from `events.jsonl`, groups them by category, counts distinct watchers per target, and posts a digest to `summary_webhook`.
 
 ### State Files
 
 | File | Purpose |
 |------|---------|
-| `state/state.json` | Baseline following list + already-sent alert pairs |
-| `state/events.jsonl` | Append-only log of all detected follows |
+| `state/state.json` | Baseline following list + already-sent alert pairs + category cache |
+| `state/events.jsonl` | Append-only log of all detected follows (used to build the hourly summary) |
 
 > 🔄 Want to reset? Delete the `state/` folder. The bot will re-warmup on the next start.
 
@@ -378,6 +477,10 @@ screen -S x-tracker
 | `watch_file not found` | Make sure `twitter.txt` exists in the same folder as the binary |
 | Bot sends old follows on restart | Delete the `state/` folder and restart |
 | `command not found: go` | Go isn't installed — revisit [Step 1](#step-1--install-go) |
+| Everything shows as `Uncategorized` | No OpenRouter key set, or all models failed/hit quota — add keys/models (see [Step 9](#step-9--optional-enable-ai-categorization--hourly-summary)) |
+| `openrouter ... failed: HTTP 404` | That free model name is gone — update the `models` list with a current one |
+| No hourly summary appears | Set `summary_webhook`; the digest only sends when there were follows in the interval |
+| `query ID refresh failed` | Harmless — the bot uses built-in fallback IDs; check network if follows also fail |
 
 ---
 
@@ -406,6 +509,18 @@ Yes. Add as many accounts as you like to `twitter.txt`, one per line.
 
 **Can I send alerts to multiple Discord channels?**
 Yes. Add multiple webhook URLs under `discord.raw_webhooks`.
+
+**Do I have to use the AI categorization?**
+No. It's optional. Leave `categorization.openrouter.api_keys` empty (or set `enabled: false`) and the bot runs like the classic version. With no LLM it still does basic keyword categorization.
+
+**Does the AI categorization cost money?**
+It can be free. OpenRouter offers free-tier models (the ones ending in `:free`). The bot caches each account's category for 7 days and rotates multiple keys to stay within free limits. You can also add paid models if you prefer.
+
+**Does fetching tweets use extra X requests?**
+Yes — when `use_tweets: true`, each *newly seen* account costs one extra `UserTweets` call (drawn from the **same cookie pool** as the tracker). It only happens on a cache miss. Set `use_tweets: false` to categorize from name + bio only.
+
+**The bot stopped finding follows after X updated — what do I do?**
+Usually nothing. The bot refreshes X's GraphQL query IDs from x.com at every startup, so a simple restart picks up X's latest changes automatically.
 
 **What operating systems does it support?**
 Linux, macOS, and Windows. It's a single self-contained binary with no runtime dependencies.
@@ -442,9 +557,10 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o x-tracker.exe .
 ## 🧱 Tech Stack
 
 - **Language:** Go (single static binary, no runtime dependencies)
-- **API:** X / Twitter internal GraphQL API (cookie-based authentication)
-- **Output:** Discord webhooks (rich embeds)
-- **State:** JSON file persistence
+- **API:** X / Twitter internal GraphQL API (cookie-based authentication, dynamic query IDs)
+- **AI:** OpenRouter LLM for project categorization (free-tier capable, multi-key rotation) with keyword fallback
+- **Output:** Discord webhooks (rich embeds + hourly category summary)
+- **State:** JSON file persistence (baseline, dedup pairs, category cache)
 - **Config:** YAML with startup validation
 
 ---
