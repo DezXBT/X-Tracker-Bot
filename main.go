@@ -61,6 +61,9 @@ func main() {
 	logInfo("poll interval: %s", cfg.Tracking.PollInterval)
 	logInfo("cookie pool: %d", len(cfg.Twitter.Cookies))
 	logInfo("webhooks: %d", len(cfg.Discord.RawWebhooks))
+	logInfo("categorization: %v (openrouter keys: %d, models: %d)",
+		cfg.CategorizationEnabled(), len(cfg.Categorization.OpenRouter.APIKeys), len(cfg.Categorization.OpenRouter.Models))
+	logInfo("summary webhook: %v (interval: %s)", cfg.Discord.SummaryWebhook != "", cfg.SummaryIntervalDuration())
 
 	// Initialize X-Client-Transaction-Id generator (fetches x.com + ondemand JS).
 	// Non-fatal: if it fails we fall back to random transaction IDs.
@@ -68,8 +71,9 @@ func main() {
 		logWarn("X-Client-Transaction-Id init failed: %v (continuing without)", err)
 	}
 
-	// Create tracker
-	tracker := NewTracker(cfg, accounts, state, eventsPath, statePath)
+	// Create categorizer + tracker
+	categorizer := NewCategorizer(cfg)
+	tracker := NewTracker(cfg, accounts, state, eventsPath, statePath, categorizer)
 
 	// Warmup baseline
 	tracker.Warmup()
@@ -80,6 +84,9 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
+
+	// Hourly categorized summary loop (no-op if no summary_webhook configured)
+	go tracker.RunSummaryLoop(ctx)
 
 	// Main loop
 	go func() {

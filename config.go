@@ -31,6 +31,20 @@ type DiscordConfig struct {
 	SummaryInterval string   `yaml:"summary_interval,omitempty"`
 }
 
+type OpenRouterConfig struct {
+	APIKeys []string `yaml:"api_keys"`
+	Models  []string `yaml:"models"`
+}
+
+type CategorizationConfig struct {
+	// Enabled defaults to true when omitted (pointer lets us tell "unset" apart
+	// from an explicit false).
+	Enabled    *bool            `yaml:"enabled"`
+	Categories []string         `yaml:"categories"`
+	CacheTTL   string           `yaml:"cache_ttl"`
+	OpenRouter OpenRouterConfig `yaml:"openrouter"`
+}
+
 type LogConfig struct {
 	Timezone string `yaml:"timezone"`
 	Level    string `yaml:"level"`
@@ -40,10 +54,18 @@ type Config struct {
 	Twitter struct {
 		Cookies []CookiePair `yaml:"cookies"`
 	} `yaml:"twitter"`
-	WatchFile  string          `yaml:"watch_file"`
-	Tracking   TrackingConfig  `yaml:"tracking"`
-	Discord    DiscordConfig   `yaml:"discord"`
-	Logging    LogConfig       `yaml:"logging"`
+	WatchFile      string               `yaml:"watch_file"`
+	Tracking       TrackingConfig       `yaml:"tracking"`
+	Discord        DiscordConfig        `yaml:"discord"`
+	Categorization CategorizationConfig `yaml:"categorization"`
+	Logging        LogConfig            `yaml:"logging"`
+}
+
+// defaultCategories is the base taxonomy used when none is configured. The LLM
+// is asked to prefer these but may return a new category when nothing fits.
+var defaultCategories = []string{
+	"AI", "Layer 1", "Layer 2", "DeFi", "NFT", "Gaming",
+	"Meme", "DePIN", "RWA", "Infra", "Social",
 }
 
 func (c *Config) PollIntervalDuration() time.Duration {
@@ -60,6 +82,32 @@ func (c *Config) PageDelayDuration() time.Duration {
 		return 500 * time.Millisecond
 	}
 	return d
+}
+
+// SummaryIntervalDuration is how often the categorized summary is posted.
+func (c *Config) SummaryIntervalDuration() time.Duration {
+	d, err := time.ParseDuration(c.Discord.SummaryInterval)
+	if err != nil {
+		return time.Hour
+	}
+	return d
+}
+
+// CacheTTLDuration is how long a cached category for a handle stays valid.
+func (c *Config) CacheTTLDuration() time.Duration {
+	d, err := time.ParseDuration(c.Categorization.CacheTTL)
+	if err != nil {
+		return 7 * 24 * time.Hour
+	}
+	return d
+}
+
+// CategorizationEnabled reports whether categorization is on (default true).
+func (c *Config) CategorizationEnabled() bool {
+	if c.Categorization.Enabled == nil {
+		return true
+	}
+	return *c.Categorization.Enabled
 }
 
 func (c *Config) Timezone() *time.Location {
@@ -151,6 +199,15 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = "info"
+	}
+	if cfg.Discord.SummaryInterval == "" {
+		cfg.Discord.SummaryInterval = "1h"
+	}
+	if cfg.Categorization.CacheTTL == "" {
+		cfg.Categorization.CacheTTL = "168h" // 7 days
+	}
+	if len(cfg.Categorization.Categories) == 0 {
+		cfg.Categorization.Categories = defaultCategories
 	}
 
 	return cfg, nil

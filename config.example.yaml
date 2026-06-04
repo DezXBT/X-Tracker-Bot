@@ -26,9 +26,43 @@ tracking:
   page_delay: 500ms
 
 discord:
-  # Discord webhook URL(s) for raw follow alerts
+  # Discord webhook URL(s) for raw follow alerts (per-follow, real-time)
   raw_webhooks:
     - "https://discord.com/api/webhooks/YOUR_WEBHOOK_HERE"
+  # Webhook for the categorized summary. Leave empty to disable summaries.
+  summary_webhook: "https://discord.com/api/webhooks/YOUR_SUMMARY_WEBHOOK_HERE"
+  # How often to post the summary (Go duration: 1h, 30m, 2h)
+  summary_interval: 1h
+
+categorization:
+  # Set false to disable categorization (raw alerts still work).
+  enabled: true
+  # Base taxonomy. The LLM prefers these but may add a new one when nothing fits.
+  categories:
+    - AI
+    - Layer 1
+    - Layer 2
+    - DeFi
+    - NFT
+    - Gaming
+    - Meme
+    - DePIN
+    - RWA
+    - Infra
+    - Social
+  # How long a categorized handle stays cached before being re-checked.
+  cache_ttl: 168h  # 7 days
+  openrouter:
+    # Multiple keys are rotated round-robin (helps spread free-tier quota).
+    # If empty, categorization falls back to keyword matching only.
+    api_keys:
+      - "sk-or-v1-YOUR_OPENROUTER_KEY"
+      # - "sk-or-v1-SECOND_KEY"
+    # Free-tier models, tried in order until one succeeds.
+    models:
+      - "meta-llama/llama-3.3-70b-instruct:free"
+      - "google/gemini-2.0-flash-exp:free"
+      - "deepseek/deepseek-chat-v3-0324:free"
 
 logging:
   timezone: Asia/Jakarta

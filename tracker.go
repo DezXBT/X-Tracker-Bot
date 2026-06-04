@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -13,32 +15,46 @@ const sentPairTTL = 30 * 24 * time.Hour
 
 // Tracker manages the follow tracking loop.
 type Tracker struct {
-	cfg        *Config
-	state      *State
-	clients    []*TwitterClient
-	webhook    *DiscordWebhook
-	accounts   []string
-	eventsPath string
-	statePath  string
-	cookieIdx  int
-	mu         sync.Mutex
+	cfg         *Config
+	state       *State
+	clients     []*TwitterClient
+	webhook     *DiscordWebhook
+	categorizer *Categorizer
+	accounts    []string
+	eventsPath  string
+	statePath   string
+	cookieIdx   int
+	mu          sync.Mutex
 }
 
-func NewTracker(cfg *Config, accounts []string, state *State, eventsPath, statePath string) *Tracker {
+func NewTracker(cfg *Config, accounts []string, state *State, eventsPath, statePath string, categorizer *Categorizer) *Tracker {
 	clients := make([]*TwitterClient, len(cfg.Twitter.Cookies))
 	for i, c := range cfg.Twitter.Cookies {
 		clients[i] = NewTwitterClient(c)
 	}
 
 	return &Tracker{
-		cfg:        cfg,
-		state:      state,
-		clients:    clients,
-		webhook:    NewDiscordWebhook(),
-		accounts:   accounts,
-		eventsPath: eventsPath,
-		statePath:  statePath,
+		cfg:         cfg,
+		state:       state,
+		clients:     clients,
+		webhook:     NewDiscordWebhook(),
+		categorizer: categorizer,
+		accounts:    accounts,
+		eventsPath:  eventsPath,
+		statePath:   statePath,
 	}
+}
+
+// categorize resolves a target's project category, using the cache first and
+// falling back to the categorizer (LLM + keywords) on a miss.
+func (t *Tracker) categorize(screenName, name, bio string) string {
+	ttl := t.cfg.CacheTTLDuration()
+	if cat, ok := t.state.GetCachedCategory(screenName, ttl); ok {
+		return cat
+	}
+	cat := t.categorizer.Categorize(name, screenName, bio)
+	t.state.SetCachedCategory(screenName, cat)
+	return cat
 }
 
 // nextClient returns the next client in round-robin order.
@@ -184,10 +200,13 @@ func (t *Tracker) ScanOnce() {
 			profileImageURL := targetData.ProfileImageURL
 			name := targetData.Name
 
+			// Resolve the project category (cached → LLM → keyword fallback).
+			category := t.categorize(targetScreen, name, bio)
+
 			// Send webhook alert
 			err := t.webhook.SendFollowAlert(
 				t.cfg.Discord.RawWebhooks,
-				watcher, targetScreen, bio, followersCount, profileImageURL,
+				watcher, targetScreen, bio, category, followersCount, profileImageURL,
 				t.cfg.Timezone(),
 			)
 			if err != nil {
@@ -195,10 +214,10 @@ func (t *Tracker) ScanOnce() {
 				continue
 			}
 			t.state.SentPairs[pairKey] = time.Now().UnixMilli()
-			logInfo("[alert] sent %s", pairKey)
+			logInfo("[alert] sent %s [%s]", pairKey, category)
 
 			// Append event
-			ev := MakeEvent(watcher, targetScreen, bio, name, followersCount, profileImageURL)
+			ev := MakeEvent(watcher, targetScreen, bio, name, category, followersCount, profileImageURL)
 			if err := AppendEvent(t.eventsPath, ev); err != nil {
 				logWarn("[event] failed to append: %v", err)
 			}
@@ -209,7 +228,131 @@ func (t *Tracker) ScanOnce() {
 		time.Sleep(300 * time.Millisecond)
 	}
 	t.state.PrunePairs(sentPairTTL)
+	t.state.PruneCategoryCache(t.cfg.CacheTTLDuration())
 	t.state.Save(t.statePath)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Hourly categorized summary
+// ──────────────────────────────────────────────────────────────────────────────
+
+// RunSummaryLoop posts a categorized summary every summary_interval until ctx
+// is cancelled. It is a no-op when no summary_webhook is configured.
+func (t *Tracker) RunSummaryLoop(ctx context.Context) {
+	if t.cfg.Discord.SummaryWebhook == "" {
+		logInfo("[summary] no summary_webhook configured; summary disabled")
+		return
+	}
+	interval := t.cfg.SummaryIntervalDuration()
+	logInfo("[summary] enabled; interval=%s", interval)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logError("[summary] recovered from panic: %v", r)
+					}
+				}()
+				t.sendSummary(interval)
+			}()
+		}
+	}
+}
+
+func (t *Tracker) sendSummary(window time.Duration) {
+	events, err := ReadRecentEvents(t.eventsPath, window)
+	if err != nil {
+		logWarn("[summary] read events: %v", err)
+		return
+	}
+	if len(events) == 0 {
+		logInfo("[summary] nothing in last %s; skipping", window)
+		return
+	}
+	grouped := aggregateByCategory(events)
+	if err := t.webhook.SendSummary(t.cfg.Discord.SummaryWebhook, grouped, window, t.cfg.Timezone()); err != nil {
+		logError("[summary] send failed: %v", err)
+		return
+	}
+	logInfo("[summary] sent (%d follows across %d categories)", len(events), len(grouped))
+}
+
+// SummaryTarget is one followed account and how many distinct watchers followed
+// it within the summary window.
+type SummaryTarget struct {
+	Handle string
+	Count  int
+}
+
+// SummaryCategory groups targets under a project category.
+type SummaryCategory struct {
+	Name    string
+	Targets []SummaryTarget
+}
+
+// aggregateByCategory groups events by category, counting distinct watchers per
+// target. Categories and targets are sorted by activity (descending).
+func aggregateByCategory(events []Event) []SummaryCategory {
+	// category -> targetLower -> set of watchers
+	byCat := make(map[string]map[string]map[string]bool)
+	display := make(map[string]string) // targetLower -> original screen name
+
+	for _, e := range events {
+		cat := e.Category
+		if cat == "" {
+			cat = UncategorizedLabel
+		}
+		tl := e.TargetLower
+		if tl == "" {
+			tl = strings.ToLower(e.Target)
+		}
+		if byCat[cat] == nil {
+			byCat[cat] = make(map[string]map[string]bool)
+		}
+		if byCat[cat][tl] == nil {
+			byCat[cat][tl] = make(map[string]bool)
+		}
+		byCat[cat][tl][strings.ToLower(e.Watcher)] = true
+		display[tl] = e.Target
+	}
+
+	var cats []SummaryCategory
+	for cat, targets := range byCat {
+		var ts []SummaryTarget
+		for tl, watchers := range targets {
+			ts = append(ts, SummaryTarget{Handle: display[tl], Count: len(watchers)})
+		}
+		sort.Slice(ts, func(i, j int) bool {
+			if ts[i].Count != ts[j].Count {
+				return ts[i].Count > ts[j].Count
+			}
+			return strings.ToLower(ts[i].Handle) < strings.ToLower(ts[j].Handle)
+		})
+		cats = append(cats, SummaryCategory{Name: cat, Targets: ts})
+	}
+
+	sort.Slice(cats, func(i, j int) bool {
+		ci, cj := categoryTotal(cats[i]), categoryTotal(cats[j])
+		if ci != cj {
+			return ci > cj
+		}
+		return cats[i].Name < cats[j].Name
+	})
+	return cats
+}
+
+func categoryTotal(c SummaryCategory) int {
+	total := 0
+	for _, t := range c.Targets {
+		total += t.Count
+	}
+	return total
 }
 
 func toSet(items []string) map[string]bool {
