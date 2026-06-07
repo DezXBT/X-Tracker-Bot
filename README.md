@@ -300,7 +300,7 @@ discord:
   summary_webhook: "https://discord.com/api/webhooks/HOURLY_SUMMARY"  # leave empty to disable summaries
   summary_interval: 1h            # how often to post the digest
   summary_dedup_ttl: 720h         # report each project once; re-eligible after this long (30d)
-  summary_max_followers_enabled: false  # only show targets with followers <= max in the summary
+  summary_max_followers_enabled: true   # on by default — only show targets with followers <= max
   summary_max_followers: 1000           # the max (used only when the filter is enabled)
 
 categorization:
@@ -378,7 +378,7 @@ discord:
   summary_webhook: "..."       # (optional) hourly category digest — empty = off
   summary_interval: 1h         # how often to post the digest
   summary_dedup_ttl: 720h      # report each project only once (re-eligible after 30d)
-  summary_max_followers_enabled: false  # only show targets with followers <= max in the summary
+  summary_max_followers_enabled: true   # on by default — only show targets with followers <= max
   summary_max_followers: 1000           # the max (used only when the filter is enabled)
 
 # (Optional) AI categorization — see Step 9 for the full walkthrough
@@ -489,7 +489,7 @@ screen -S x-tracker
 
 - Reads the last interval's events from `events.jsonl`, groups them by category, counts distinct watchers per target, and posts a digest to `summary_webhook`.
 - **De-duplicates across summaries:** a project that already appeared in a previous summary is skipped, so each project is reported **only once** (until `summary_dedup_ttl` elapses). If an interval has no new projects, no digest is sent.
-- **Optional follower filter:** when `summary_max_followers_enabled` is `true`, targets with more than `summary_max_followers` followers are left out of the digest (raw alerts are unaffected). Targets whose follower count is unknown are kept.
+- **Follower filter (on by default):** targets with more than `summary_max_followers` followers (default 1,000) are left out of the digest, keeping it focused on smaller/early accounts. Set `summary_max_followers_enabled: false` to show every target. Raw alerts are unaffected, and targets whose follower count is unknown are kept.
 
 ### State Files
 

@@ -120,10 +120,10 @@ func (c *Config) SummaryDedupTTLDuration() time.Duration {
 }
 
 // SummaryFollowerFilterEnabled reports whether the summary follower filter is
-// on (default false / off).
+// on (default true — a fresh install filters the summary to small accounts).
 func (c *Config) SummaryFollowerFilterEnabled() bool {
 	if c.Discord.SummaryMaxFollowersEnabled == nil {
-		return false
+		return true
 	}
 	return *c.Discord.SummaryMaxFollowersEnabled
 }

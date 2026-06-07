@@ -42,9 +42,10 @@ discord:
   # this long, so each project is reported only once (keeps the channel clean).
   summary_dedup_ttl: 720h  # 30 days
   # Summary follower filter: only show targets with followers <= max in the
-  # summary (handy to focus on smaller/early accounts). Targets above the max are
-  # not sent to the summary webhook. Does NOT affect per-follow raw alerts.
-  summary_max_followers_enabled: false  # set true to enable
+  # summary (keeps the digest focused on smaller/early accounts). Targets above
+  # the max are not sent to the summary webhook. Does NOT affect per-follow raw
+  # alerts. On by default — set enabled to false to show every target.
+  summary_max_followers_enabled: true   # set false to disable the filter
   summary_max_followers: 1000           # max followers to display (when enabled)
 
 categorization:
