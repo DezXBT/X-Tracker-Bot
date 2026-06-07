@@ -9,6 +9,9 @@ config.yaml
 # OpenRouter API keys (contains secrets)
 llm.txt
 
+# Frontrun session tokens (contains secrets)
+frontrun.txt
+
 # State files
 state/
 

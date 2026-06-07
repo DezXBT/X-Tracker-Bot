@@ -20,6 +20,7 @@ type Tracker struct {
 	clients     []*TwitterClient
 	webhook     *DiscordWebhook
 	categorizer *Categorizer
+	frontrun    *FrontrunClient // optional; nil when Frontrun enrichment is off
 	accounts    []string
 	eventsPath  string
 	statePath   string
@@ -42,10 +43,27 @@ func NewTracker(cfg *Config, accounts []string, state *State, eventsPath, stateP
 		clients:     clients,
 		webhook:     NewDiscordWebhook(),
 		categorizer: categorizer,
+		frontrun:    newFrontrunFromConfig(cfg),
 		accounts:    accounts,
 		eventsPath:  eventsPath,
 		statePath:   statePath,
 	}
+}
+
+// newFrontrunFromConfig builds a Frontrun client from config, or returns nil when
+// the feature is off or its credentials are incomplete (logging a warning in the
+// latter case so a misconfiguration is visible).
+func newFrontrunFromConfig(cfg *Config) *FrontrunClient {
+	if !cfg.FrontrunEnabled() {
+		return nil
+	}
+	tokens := cfg.FrontrunTokens()
+	if cfg.Frontrun.BaseURL == "" || len(tokens) == 0 {
+		logWarn("[frontrun] enabled but base_url or tokens missing; enrichment disabled")
+		return nil
+	}
+	logInfo("[frontrun] enrichment enabled (%d token(s) in pool)", len(tokens))
+	return NewFrontrunClient(cfg.Frontrun.BaseURL, tokens, cfg.Frontrun.ClientVersion, cfg.Frontrun.ClientLanguage)
 }
 
 // categorize resolves a target's project category, using the cache first and
@@ -351,6 +369,13 @@ func (t *Tracker) sendSummary(window time.Duration) {
 		return
 	}
 
+	// Optionally enrich the (already filtered) targets with Frontrun signals —
+	// username-change marker + smart-followers count. Only runs when enabled, and
+	// only for targets that will actually be shown, to keep API calls minimal.
+	if t.frontrun != nil {
+		t.enrichSummaryFrontrun(grouped)
+	}
+
 	// Mark only what was actually included in the embed (SendSummary may drop
 	// categories to fit Discord's limits) so dropped projects aren't lost.
 	included, err := t.webhook.SendSummary(t.cfg.Discord.SummaryWebhook, grouped, window, t.cfg.Timezone())
@@ -365,8 +390,86 @@ func (t *Tracker) sendSummary(window time.Duration) {
 		t.state.MarkSummarized(h)
 	}
 	t.state.PruneSummarized(ttl)
+	if t.frontrun != nil {
+		t.state.PruneFrontrun(t.cfg.FrontrunCacheTTLDuration())
+	}
 	t.state.Save(t.statePath)
 	logInfo("[summary] sent (%d new projects)", len(included))
+}
+
+// enrichSummaryFrontrun fills the Frontrun fields (username-change marker +
+// smart-followers count) on each summary target, using the cache first and
+// calling the Frontrun API on a miss. Per-target errors are non-fatal: the
+// target simply shows no extra marker.
+func (t *Tracker) enrichSummaryFrontrun(cats []SummaryCategory) {
+	ttl := t.cfg.FrontrunCacheTTLDuration()
+	showName := t.cfg.FrontrunShowUsernameChange()
+	showSmart := t.cfg.FrontrunShowSmartFollowers()
+
+	for ci := range cats {
+		for ti := range cats[ci].Targets {
+			handle := cats[ci].Targets[ti].Handle
+
+			if e, ok := t.state.GetFrontrun(handle, ttl); ok {
+				cats[ci].Targets[ti].UsernameChanged = e.UsernameChanged
+				cats[ci].Targets[ti].OldUsername = e.OldUsername
+				cats[ci].Targets[ti].SmartFollowers = e.SmartFollowers
+				continue
+			}
+
+			var (
+				changed bool
+				oldName string
+				smart   int
+			)
+			if showName {
+				if hist, err := t.frontrun.GetUsernameHistory(handle); err != nil {
+					logWarn("[frontrun] username-history @%s: %v", handle, err)
+				} else if len(hist) > 0 {
+					changed = true
+					oldName = latestOldUsername(hist)
+				}
+			}
+			if showSmart {
+				if sf, err := t.frontrun.GetSmartFollowers(handle); err != nil {
+					logWarn("[frontrun] smart-followers @%s: %v", handle, err)
+				} else {
+					smart = len(sf)
+				}
+			}
+
+			cats[ci].Targets[ti].UsernameChanged = changed
+			cats[ci].Targets[ti].OldUsername = oldName
+			cats[ci].Targets[ti].SmartFollowers = smart
+			t.state.SetFrontrun(handle, changed, oldName, smart)
+
+			// Be gentle on the Frontrun API between targets.
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+}
+
+// latestOldUsername returns the most recently changed-from username in the
+// history (the handle's immediately previous username).
+func latestOldUsername(hist []UsernameHistoryEntry) string {
+	best := ""
+	var bestTs time.Time
+	for _, h := range hist {
+		if h.OldUsername == "" {
+			continue
+		}
+		ts, err := time.Parse(time.RFC3339, h.ChangedAt)
+		if err != nil {
+			// Unparseable timestamp: fall back to the last non-empty entry seen.
+			best = h.OldUsername
+			continue
+		}
+		if best == "" || ts.After(bestTs) {
+			best = h.OldUsername
+			bestTs = ts
+		}
+	}
+	return best
 }
 
 // filterByMaxFollowers drops targets whose follower count exceeds max, and
@@ -418,6 +521,10 @@ type SummaryTarget struct {
 	Handle    string
 	Count     int
 	Followers int
+	// Optional Frontrun enrichment (zero values when disabled or unavailable).
+	UsernameChanged bool
+	OldUsername     string
+	SmartFollowers  int
 }
 
 // SummaryCategory groups targets under a project category.

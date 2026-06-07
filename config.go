@@ -48,6 +48,21 @@ type OpenRouterConfig struct {
 	Models  []string `yaml:"models"`
 }
 
+// FrontrunConfig configures the optional Frontrun enrichment of the summary
+// (username-change marker + smart-followers count). Off unless Enabled is true.
+type FrontrunConfig struct {
+	Enabled            *bool    `yaml:"enabled"`
+	BaseURL            string   `yaml:"base_url"`
+	Tokens             []string `yaml:"tokens"`     // pool: requests rotate round-robin
+	Token              string   `yaml:"token"`      // optional single token, merged into the pool
+	TokenFile          string   `yaml:"token_file"` // optional file, one token per line
+	ClientVersion      string   `yaml:"client_version"`
+	ClientLanguage     string   `yaml:"client_language"`
+	ShowUsernameChange *bool    `yaml:"show_username_change"`
+	ShowSmartFollowers *bool    `yaml:"show_smart_followers"`
+	CacheTTL           string   `yaml:"cache_ttl"`
+}
+
 type CategorizationConfig struct {
 	// Enabled and UseTweets default to true when omitted (pointer lets us tell
 	// "unset" apart from an explicit false).
@@ -73,6 +88,7 @@ type Config struct {
 	Tracking       TrackingConfig       `yaml:"tracking"`
 	Discord        DiscordConfig        `yaml:"discord"`
 	Categorization CategorizationConfig `yaml:"categorization"`
+	Frontrun       FrontrunConfig       `yaml:"frontrun"`
 	Logging        LogConfig            `yaml:"logging"`
 }
 
@@ -135,6 +151,49 @@ func (c *Config) SummaryMaxFollowersValue() int {
 		return 1000
 	}
 	return c.Discord.SummaryMaxFollowers
+}
+
+// FrontrunEnabled reports whether the optional Frontrun summary enrichment is
+// on (default false / off).
+func (c *Config) FrontrunEnabled() bool {
+	if c.Frontrun.Enabled == nil {
+		return false
+	}
+	return *c.Frontrun.Enabled
+}
+
+// FrontrunTokens is the round-robin token pool: the single token plus the
+// tokens list (and any loaded from token_file by main), de-duplicated.
+func (c *Config) FrontrunTokens() []string {
+	return mergeUniqueKeys([]string{c.Frontrun.Token}, c.Frontrun.Tokens)
+}
+
+// FrontrunShowUsernameChange reports whether to show the username-change marker
+// (default true when Frontrun is enabled).
+func (c *Config) FrontrunShowUsernameChange() bool {
+	if c.Frontrun.ShowUsernameChange == nil {
+		return true
+	}
+	return *c.Frontrun.ShowUsernameChange
+}
+
+// FrontrunShowSmartFollowers reports whether to show the smart-followers count
+// (default true when Frontrun is enabled).
+func (c *Config) FrontrunShowSmartFollowers() bool {
+	if c.Frontrun.ShowSmartFollowers == nil {
+		return true
+	}
+	return *c.Frontrun.ShowSmartFollowers
+}
+
+// FrontrunCacheTTLDuration is how long a Frontrun enrichment result for a handle
+// stays cached (default 7 days).
+func (c *Config) FrontrunCacheTTLDuration() time.Duration {
+	d, err := time.ParseDuration(c.Frontrun.CacheTTL)
+	if err != nil {
+		return 7 * 24 * time.Hour
+	}
+	return d
 }
 
 // CacheTTLDuration is how long a cached category for a handle stays valid.
@@ -313,6 +372,12 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if cfg.Categorization.KeysFile == "" {
 		cfg.Categorization.KeysFile = "llm.txt"
+	}
+	if cfg.Frontrun.ClientLanguage == "" {
+		cfg.Frontrun.ClientLanguage = "en"
+	}
+	if cfg.Frontrun.CacheTTL == "" {
+		cfg.Frontrun.CacheTTL = "168h" // 7 days
 	}
 
 	return cfg, nil

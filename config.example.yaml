@@ -93,6 +93,33 @@ categorization:
       - "poolside/laguna-m.1:free"
       - "poolside/laguna-xs.2:free"
 
+# (Optional) Frontrun enrichment for the summary. When enabled, each account in
+# the summary gets extra signals: a username-change marker (✏️ ex @oldname) and a
+# smart-followers count (🧠 N). Off by default — leave enabled false to skip it
+# entirely (no API calls, no extra latency). Only affects the summary, not raw alerts.
+frontrun:
+  enabled: false
+  # Base URL of the Frontrun API.
+  base_url: "https://frontrun.network"
+  # Session token pool. Multiple tokens are rotated round-robin across requests,
+  # and a throttled/expired token automatically retries on the next one.
+  tokens:
+    - "SESSION_TOKEN_1"
+    - "SESSION_TOKEN_2"
+  # Optional single token (merged into the pool above).
+  token: ""
+  # Optional file with one token per line (merged into the pool). Keep tokens out
+  # of config.yaml by putting them here. Git-ignored.
+  token_file: frontrun.txt
+  # Client headers the Frontrun web app sends (update if Frontrun changes them).
+  client_version: ""
+  client_language: "en"
+  # Toggle each enrichment independently.
+  show_username_change: true   # ✏️ ex @oldname
+  show_smart_followers: true   # 🧠 N
+  # How long a fetched enrichment is cached per handle (saves API calls).
+  cache_ttl: 168h  # 7 days
+
 logging:
   timezone: Asia/Jakarta
   level: info  # debug, info, warn, error

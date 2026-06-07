@@ -21,12 +21,21 @@ type State struct {
 	CategoryCache        map[string]CategoryEntry `json:"categoryCache"`
 	CategoryCacheVersion int                      `json:"categoryCacheVersion"`
 	SummarizedTargets    map[string]int64         `json:"summarizedTargets"`
+	FrontrunCache        map[string]FrontrunEntry `json:"frontrunCache"`
 }
 
 // CategoryEntry is a cached categorization result for a single handle.
 type CategoryEntry struct {
 	Category string `json:"category"`
 	Ts       int64  `json:"ts"` // unix millis when it was computed
+}
+
+// FrontrunEntry is a cached Frontrun enrichment result for a single handle.
+type FrontrunEntry struct {
+	UsernameChanged bool   `json:"usernameChanged"`
+	OldUsername     string `json:"oldUsername"`
+	SmartFollowers  int    `json:"smartFollowers"`
+	Ts              int64  `json:"ts"` // unix millis when it was fetched
 }
 
 type Event struct {
@@ -48,6 +57,7 @@ func NewState() *State {
 		SentPairs:         make(map[string]int64),
 		CategoryCache:     make(map[string]CategoryEntry),
 		SummarizedTargets: make(map[string]int64),
+		FrontrunCache:     make(map[string]FrontrunEntry),
 	}
 }
 
@@ -69,6 +79,9 @@ func LoadState(statePath string) *State {
 	}
 	if s.SummarizedTargets == nil {
 		s.SummarizedTargets = make(map[string]int64)
+	}
+	if s.FrontrunCache == nil {
+		s.FrontrunCache = make(map[string]FrontrunEntry)
 	}
 	return s
 }
@@ -137,6 +150,38 @@ func (s *State) PruneCategoryCache(ttl time.Duration) {
 	for k, e := range s.CategoryCache {
 		if e.Ts < cutoff {
 			delete(s.CategoryCache, k)
+		}
+	}
+}
+
+// GetFrontrun returns a still-valid cached Frontrun enrichment for handle.
+func (s *State) GetFrontrun(handle string, ttl time.Duration) (FrontrunEntry, bool) {
+	e, ok := s.FrontrunCache[strings.ToLower(handle)]
+	if !ok {
+		return FrontrunEntry{}, false
+	}
+	if time.Now().UnixMilli()-e.Ts > ttl.Milliseconds() {
+		return FrontrunEntry{}, false
+	}
+	return e, true
+}
+
+// SetFrontrun caches a Frontrun enrichment for handle with the current timestamp.
+func (s *State) SetFrontrun(handle string, usernameChanged bool, oldUsername string, smartFollowers int) {
+	s.FrontrunCache[strings.ToLower(handle)] = FrontrunEntry{
+		UsernameChanged: usernameChanged,
+		OldUsername:     oldUsername,
+		SmartFollowers:  smartFollowers,
+		Ts:              time.Now().UnixMilli(),
+	}
+}
+
+// PruneFrontrun drops Frontrun cache entries older than ttl.
+func (s *State) PruneFrontrun(ttl time.Duration) {
+	cutoff := time.Now().Add(-ttl).UnixMilli()
+	for k, e := range s.FrontrunCache {
+		if e.Ts < cutoff {
+			delete(s.FrontrunCache, k)
 		}
 	}
 }

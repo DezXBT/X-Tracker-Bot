@@ -332,7 +332,29 @@ categorization:
       - "openai/gpt-oss-20b:free"
       # Free model names change often — if you get 404s, refresh from
       # https://openrouter.ai/models?max_price=0
+
+# (Optional) Frontrun enrichment for the summary — off by default
+frontrun:
+  enabled: false                  # true = add extra signals to each summary line
+  base_url: "https://frontrun.network"
+  tokens:                         # session token pool, rotated round-robin per request
+    - "SESSION_TOKEN_1"
+    - "SESSION_TOKEN_2"
+  token: ""                       # optional single token, merged into the pool
+  token_file: frontrun.txt        # optional: one token per line (git-ignored)
+  client_version: ""              # headers the Frontrun web app sends
+  client_language: "en"
+  show_username_change: true      # ✏️ ex @oldname when the account ever renamed
+  show_smart_followers: true      # 🧠 N smart followers
+  cache_ttl: 168h                 # cache an enrichment per handle for 7 days
 ```
+
+When enabled, each account in the summary gains optional markers — e.g.
+`` `2×` [@handle](…) · 👥 1.2K · 🧠 12 · ✏️ ex @oldname `` — where 🧠 is the
+smart-followers count and ✏️ flags a past username change (with the previous handle).
+Multiple `tokens` are rotated **round-robin**, and a throttled/expired token retries
+on the next one. The feature only touches the summary; raw alerts are unchanged, and
+when `enabled: false` no Frontrun API calls are made at all.
 
 **How it degrades gracefully:**
 
@@ -392,6 +414,15 @@ categorization:
   openrouter:
     api_keys: []               # optional inline keys; merged with llm.txt. None = keyword-only
     models: ["openai/gpt-oss-120b:free", "z-ai/glm-4.5-air:free", "..."]  # tried in order
+
+# (Optional) Frontrun summary enrichment — off by default
+frontrun:
+  enabled: false               # true = add 🧠 smart-followers + ✏️ username-change markers
+  base_url: "https://frontrun.network"
+  tokens: ["SESSION_TOKEN_1", "SESSION_TOKEN_2"]  # round-robin pool
+  token_file: frontrun.txt     # optional: one token per line (git-ignored)
+  client_language: "en"
+  cache_ttl: 168h              # cache enrichment per handle (7 days)
 
 # Logging
 logging:
@@ -490,6 +521,7 @@ screen -S x-tracker
 - Reads the last interval's events from `events.jsonl`, groups them by category, counts distinct watchers per target, and posts a digest to `summary_webhook`.
 - **De-duplicates across summaries:** a project that already appeared in a previous summary is skipped, so each project is reported **only once** (until `summary_dedup_ttl` elapses). If an interval has no new projects, no digest is sent.
 - **Follower filter (on by default):** targets with more than `summary_max_followers` followers (default 1,000) are left out of the digest, keeping it focused on smaller/early accounts. Set `summary_max_followers_enabled: false` to show every target. Raw alerts are unaffected, and targets whose follower count is unknown are kept.
+- **Frontrun enrichment (optional, off by default):** when `frontrun.enabled` is `true`, each summary line also shows a smart-followers count (🧠 N) and a username-change marker (✏️ ex @oldname). Results are cached per handle (`frontrun.cache_ttl`), and the session-token pool is rotated round-robin across requests. No Frontrun calls happen while it's disabled.
 
 ### State Files
 

@@ -115,6 +115,16 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 			if t.Followers > 0 {
 				fmt.Fprintf(&b, " · 👥 %s", formatCompact(t.Followers))
 			}
+			if t.SmartFollowers > 0 {
+				fmt.Fprintf(&b, " · 🧠 %s", formatCompact(t.SmartFollowers))
+			}
+			if t.UsernameChanged {
+				if t.OldUsername != "" {
+					fmt.Fprintf(&b, " · ✏️ ex @%s", t.OldUsername)
+				} else {
+					b.WriteString(" · ✏️")
+				}
+			}
 			b.WriteByte('\n')
 		}
 		val := strings.TrimRight(b.String(), "\n")

@@ -72,6 +72,20 @@ func main() {
 		logInfo("loaded %d OpenRouter key(s) from %s", len(fileKeys), filepath.Base(llmPath))
 	}
 
+	// Load Frontrun session tokens from file (one per line), merged into the pool.
+	if cfg.Frontrun.TokenFile != "" {
+		frPath := cfg.Frontrun.TokenFile
+		if !filepath.IsAbs(frPath) {
+			frPath = filepath.Join(filepath.Dir(*configPath), frPath)
+		}
+		if fileTokens, err := loadLLMKeys(frPath); err != nil {
+			logWarn("load frontrun tokens: %v", err)
+		} else if len(fileTokens) > 0 {
+			cfg.Frontrun.Tokens = mergeUniqueKeys(cfg.Frontrun.Tokens, fileTokens)
+			logInfo("loaded %d Frontrun token(s) from %s", len(fileTokens), filepath.Base(frPath))
+		}
+	}
+
 	// Print startup info
 	logInfo("early-tracking online (Go)")
 	logInfo("watch accounts: %v", accounts)
@@ -83,6 +97,7 @@ func main() {
 	logInfo("categorization: %v (openrouter keys: %d, models: %d)",
 		cfg.CategorizationEnabled(), len(cfg.Categorization.OpenRouter.APIKeys), len(cfg.Categorization.OpenRouter.Models))
 	logInfo("summary webhook: %v (interval: %s)", cfg.Discord.SummaryWebhook != "", cfg.SummaryIntervalDuration())
+	logInfo("frontrun enrichment: %v (tokens: %d)", cfg.FrontrunEnabled(), len(cfg.FrontrunTokens()))
 
 	// Optionally refresh GraphQL query IDs + feature flags from x.com. Disabled
 	// by default: the built-in IDs are proven to work; enable only if X has
