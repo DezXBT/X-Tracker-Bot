@@ -331,6 +331,17 @@ func (t *Tracker) sendSummary(window time.Duration) {
 
 	grouped := aggregateByCategory(events)
 
+	// Optionally drop targets whose follower count exceeds the configured max,
+	// so the summary can focus on smaller/early accounts.
+	if t.cfg.SummaryFollowerFilterEnabled() {
+		max := t.cfg.SummaryMaxFollowersValue()
+		grouped = filterByMaxFollowers(grouped, max)
+		if len(grouped) == 0 {
+			logInfo("[summary] all targets exceed max followers (%d); skipping", max)
+			return
+		}
+	}
+
 	// Exclude targets already shown in a previous summary, so each project is
 	// reported at most once (per dedup TTL) — keeps the channel readable.
 	ttl := t.cfg.SummaryDedupTTLDuration()
@@ -356,6 +367,27 @@ func (t *Tracker) sendSummary(window time.Duration) {
 	t.state.PruneSummarized(ttl)
 	t.state.Save(t.statePath)
 	logInfo("[summary] sent (%d new projects)", len(included))
+}
+
+// filterByMaxFollowers drops targets whose follower count exceeds max, and
+// removes any category left empty. Targets with an unknown follower count
+// (Followers == 0) are kept, so accounts whose data hasn't been resolved yet
+// are not silently dropped.
+func filterByMaxFollowers(cats []SummaryCategory, max int) []SummaryCategory {
+	var out []SummaryCategory
+	for _, c := range cats {
+		var kept []SummaryTarget
+		for _, tgt := range c.Targets {
+			if tgt.Followers > max {
+				continue
+			}
+			kept = append(kept, tgt)
+		}
+		if len(kept) > 0 {
+			out = append(out, SummaryCategory{Name: c.Name, Targets: kept})
+		}
+	}
+	return out
 }
 
 // filterUnsummarized removes targets already reported within ttl and drops any

@@ -41,6 +41,11 @@ discord:
   # Once a project appears in a summary it is excluded from future summaries for
   # this long, so each project is reported only once (keeps the channel clean).
   summary_dedup_ttl: 720h  # 30 days
+  # Summary follower filter: only show targets with followers <= max in the
+  # summary (handy to focus on smaller/early accounts). Targets above the max are
+  # not sent to the summary webhook. Does NOT affect per-follow raw alerts.
+  summary_max_followers_enabled: false  # set true to enable
+  summary_max_followers: 1000           # max followers to display (when enabled)
 
 categorization:
   # Set false to disable categorization (raw alerts still work).

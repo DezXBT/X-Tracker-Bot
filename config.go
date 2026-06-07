@@ -36,6 +36,11 @@ type DiscordConfig struct {
 	// SummaryDedupTTL is how long a target stays excluded from future summaries
 	// after first appearing in one (default 30 days).
 	SummaryDedupTTL string `yaml:"summary_dedup_ttl,omitempty"`
+	// SummaryMaxFollowersEnabled toggles filtering the summary by follower count.
+	SummaryMaxFollowersEnabled *bool `yaml:"summary_max_followers_enabled,omitempty"`
+	// SummaryMaxFollowers is the max follower count a target may have to appear
+	// in the summary (only applied when the filter is enabled).
+	SummaryMaxFollowers int `yaml:"summary_max_followers,omitempty"`
 }
 
 type OpenRouterConfig struct {
@@ -112,6 +117,24 @@ func (c *Config) SummaryDedupTTLDuration() time.Duration {
 		return 30 * 24 * time.Hour
 	}
 	return d
+}
+
+// SummaryFollowerFilterEnabled reports whether the summary follower filter is
+// on (default false / off).
+func (c *Config) SummaryFollowerFilterEnabled() bool {
+	if c.Discord.SummaryMaxFollowersEnabled == nil {
+		return false
+	}
+	return *c.Discord.SummaryMaxFollowersEnabled
+}
+
+// SummaryMaxFollowersValue is the follower ceiling for the summary filter
+// (default 1000 when unset/<=0).
+func (c *Config) SummaryMaxFollowersValue() int {
+	if c.Discord.SummaryMaxFollowers <= 0 {
+		return 1000
+	}
+	return c.Discord.SummaryMaxFollowers
 }
 
 // CacheTTLDuration is how long a cached category for a handle stays valid.
