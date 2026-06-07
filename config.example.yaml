@@ -99,8 +99,9 @@ categorization:
 # entirely (no API calls, no extra latency). Only affects the summary, not raw alerts.
 frontrun:
   enabled: false
-  # Base URL of the Frontrun API.
-  base_url: "https://frontrun.network"
+  # Base URL of the Frontrun API (the host the web app talks to). Leave blank to
+  # use the built-in default.
+  base_url: "https://loadbalance.frontrun.pro"
   # Session token pool. Multiple tokens are rotated round-robin across requests,
   # and a throttled/expired token automatically retries on the next one.
   tokens:
@@ -112,8 +113,10 @@ frontrun:
   # of config.yaml by putting them here. Git-ignored.
   token_file: frontrun.txt
   # Client headers the Frontrun web app sends (update if Frontrun changes them).
-  client_version: ""
-  client_language: "en"
+  # Leave blank to use the built-in defaults. An empty client_version makes the
+  # API reject every request, so don't set it to "".
+  client_version: "0.0.216"
+  client_language: "EN_US"
   # Toggle each enrichment independently.
   show_username_change: true   # ✏️ ex @oldname
   show_smart_followers: true   # 🧠 N

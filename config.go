@@ -373,8 +373,18 @@ func loadConfig(path string) (*Config, error) {
 	if cfg.Categorization.KeysFile == "" {
 		cfg.Categorization.KeysFile = "llm.txt"
 	}
+	// Default the Frontrun headers/host to the values the Frontrun web app sends.
+	// Without these the API rejects the request: an empty X-Copilot-Client-Version
+	// header (or pointing base_url at the wrong host) makes every call fail, so the
+	// enrichment silently never appears. Keep these in sync if Frontrun changes them.
+	if cfg.Frontrun.BaseURL == "" {
+		cfg.Frontrun.BaseURL = "https://loadbalance.frontrun.pro"
+	}
+	if cfg.Frontrun.ClientVersion == "" {
+		cfg.Frontrun.ClientVersion = "0.0.216"
+	}
 	if cfg.Frontrun.ClientLanguage == "" {
-		cfg.Frontrun.ClientLanguage = "en"
+		cfg.Frontrun.ClientLanguage = "EN_US"
 	}
 	if cfg.Frontrun.CacheTTL == "" {
 		cfg.Frontrun.CacheTTL = "168h" // 7 days
