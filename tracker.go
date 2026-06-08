@@ -376,6 +376,16 @@ func (t *Tracker) sendSummary(window time.Duration) {
 		t.enrichSummaryFrontrun(grouped)
 	}
 
+	// Drop bios up front when the toggle is off so the renderer can stay simple
+	// ("show it if present").
+	if !t.cfg.SummaryShowBio() {
+		for ci := range grouped {
+			for ti := range grouped[ci].Targets {
+				grouped[ci].Targets[ti].Bio = ""
+			}
+		}
+	}
+
 	// Mark only what was actually included in the embed (SendSummary may drop
 	// categories to fit Discord's limits) so dropped projects aren't lost.
 	included, err := t.webhook.SendSummary(t.cfg.Discord.SummaryWebhook, grouped, window, t.cfg.Timezone())
@@ -521,6 +531,8 @@ type SummaryTarget struct {
 	Handle    string
 	Count     int
 	Followers int
+	// Bio is the account's latest bio (from X GraphQL, carried via the event).
+	Bio string
 	// Optional Frontrun enrichment (zero values when disabled or unavailable).
 	UsernameChanged bool
 	OldUsername     string
@@ -540,6 +552,7 @@ func aggregateByCategory(events []Event) []SummaryCategory {
 	byCat := make(map[string]map[string]map[string]bool)
 	display := make(map[string]string) // targetLower -> original screen name
 	followers := make(map[string]int)  // targetLower -> highest followers seen
+	bios := make(map[string]string)    // targetLower -> latest non-empty bio
 
 	for _, e := range events {
 		cat := e.Category
@@ -564,13 +577,17 @@ func aggregateByCategory(events []Event) []SummaryCategory {
 		if e.FollowersCount != nil && *e.FollowersCount > followers[tl] {
 			followers[tl] = *e.FollowersCount
 		}
+		// Events are appended chronologically, so the last non-empty bio wins.
+		if e.Bio != "" {
+			bios[tl] = e.Bio
+		}
 	}
 
 	var cats []SummaryCategory
 	for cat, targets := range byCat {
 		var ts []SummaryTarget
 		for tl, watchers := range targets {
-			ts = append(ts, SummaryTarget{Handle: display[tl], Count: len(watchers), Followers: followers[tl]})
+			ts = append(ts, SummaryTarget{Handle: display[tl], Count: len(watchers), Followers: followers[tl], Bio: bios[tl]})
 		}
 		sort.Slice(ts, func(i, j int) bool {
 			if ts[i].Count != ts[j].Count {

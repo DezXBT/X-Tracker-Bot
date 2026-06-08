@@ -41,6 +41,9 @@ type DiscordConfig struct {
 	// SummaryMaxFollowers is the max follower count a target may have to appear
 	// in the summary (only applied when the filter is enabled).
 	SummaryMaxFollowers int `yaml:"summary_max_followers,omitempty"`
+	// SummaryShowBio toggles showing each target's latest bio in the summary
+	// (default true).
+	SummaryShowBio *bool `yaml:"summary_show_bio,omitempty"`
 }
 
 type OpenRouterConfig struct {
@@ -142,6 +145,15 @@ func (c *Config) SummaryFollowerFilterEnabled() bool {
 		return true
 	}
 	return *c.Discord.SummaryMaxFollowersEnabled
+}
+
+// SummaryShowBio reports whether each summary target shows its latest bio
+// (default true when unset).
+func (c *Config) SummaryShowBio() bool {
+	if c.Discord.SummaryShowBio == nil {
+		return true
+	}
+	return *c.Discord.SummaryShowBio
 }
 
 // SummaryMaxFollowersValue is the follower ceiling for the summary filter

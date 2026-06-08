@@ -129,9 +129,9 @@ func TestFilterUnsummarized(t *testing.T) {
 
 func TestAggregateByCategory(t *testing.T) {
 	events := []Event{
-		{Watcher: "alice", Target: "awp_project", TargetLower: "awp_project", Category: "AI"},
-		{Watcher: "bob", Target: "awp_project", TargetLower: "awp_project", Category: "AI"},
-		{Watcher: "bob", Target: "awp_project", TargetLower: "awp_project", Category: "AI"}, // dup watcher
+		{Watcher: "alice", Target: "awp_project", TargetLower: "awp_project", Category: "AI", Bio: "old bio"},
+		{Watcher: "bob", Target: "awp_project", TargetLower: "awp_project", Category: "AI", Bio: "newest bio"},
+		{Watcher: "bob", Target: "awp_project", TargetLower: "awp_project", Category: "AI"}, // dup watcher, empty bio must not clobber
 		{Watcher: "carol", Target: "baseku", TargetLower: "baseku", Category: "Layer 2"},
 	}
 	cats := aggregateByCategory(events)
@@ -145,6 +145,10 @@ func TestAggregateByCategory(t *testing.T) {
 	}
 	if cats[0].Targets[0].Handle != "awp_project" || cats[0].Targets[0].Count != 2 {
 		t.Errorf("expected awp_project count=2 (distinct watchers), got %+v", cats[0].Targets[0])
+	}
+	// Latest non-empty bio wins; a later empty bio must not clobber it.
+	if cats[0].Targets[0].Bio != "newest bio" {
+		t.Errorf("expected latest bio %q, got %q", "newest bio", cats[0].Targets[0].Bio)
 	}
 	if cats[1].Name != "Layer 2" || cats[1].Targets[0].Count != 1 {
 		t.Errorf("unexpected second category: %+v", cats[1])

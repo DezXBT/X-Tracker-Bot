@@ -47,6 +47,8 @@ discord:
   # alerts. On by default — set enabled to false to show every target.
   summary_max_followers_enabled: true   # set false to disable the filter
   summary_max_followers: 1000           # max followers to display (when enabled)
+  # Show each account's latest bio as an indented line under it in the summary.
+  summary_show_bio: true                 # 📝 set false to hide bios
 
 categorization:
   # Set false to disable categorization (raw alerts still work).

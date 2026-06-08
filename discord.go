@@ -125,6 +125,10 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 					b.WriteString(" · ✏️")
 				}
 			}
+			if bio := cleanBio(t.Bio); bio != "" {
+				// Latest bio on its own indented, italic line under the account.
+				fmt.Fprintf(&b, "\n> _%s_", truncateRunes(bio, 140))
+			}
 			b.WriteByte('\n')
 		}
 		val := strings.TrimRight(b.String(), "\n")
@@ -210,6 +214,12 @@ func truncateRunes(s string, maxRunes int) string {
 	}
 	r := []rune(s)
 	return string(r[:maxRunes])
+}
+
+// cleanBio collapses newlines and runs of whitespace in a bio into single
+// spaces so it renders as one tidy line inside the summary's blockquote.
+func cleanBio(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // humanizeDuration renders common durations in English (e.g. "1 Hour").

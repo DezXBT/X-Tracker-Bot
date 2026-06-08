@@ -302,6 +302,7 @@ discord:
   summary_dedup_ttl: 720h         # report each project once; re-eligible after this long (30d)
   summary_max_followers_enabled: true   # on by default — only show targets with followers <= max
   summary_max_followers: 1000           # the max (used only when the filter is enabled)
+  summary_show_bio: true                # 📝 on by default — show each account's latest bio
 
 categorization:
   enabled: true
@@ -402,6 +403,7 @@ discord:
   summary_dedup_ttl: 720h      # report each project only once (re-eligible after 30d)
   summary_max_followers_enabled: true   # on by default — only show targets with followers <= max
   summary_max_followers: 1000           # the max (used only when the filter is enabled)
+  summary_show_bio: true                # 📝 on by default — show each account's latest bio
 
 # (Optional) AI categorization — see Step 9 for the full walkthrough
 categorization:
