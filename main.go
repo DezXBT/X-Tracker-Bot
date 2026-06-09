@@ -131,9 +131,13 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
+	summaryDone := make(chan struct{})
 
 	// Hourly categorized summary loop (no-op if no summary_webhook configured)
-	go tracker.RunSummaryLoop(ctx)
+	go func() {
+		defer close(summaryDone)
+		tracker.RunSummaryLoop(ctx)
+	}()
 
 	// Main loop
 	go func() {
@@ -172,7 +176,11 @@ func main() {
 	sig := <-sigCh
 	logInfo("received %s, shutting down...", sig)
 	cancel()
-	<-done // wait for the loop to stop before touching shared state
+	// Wait for BOTH loops to stop before touching shared state — otherwise the
+	// final Save can read the state maps while an in-flight sendSummary is still
+	// writing them, which is an unrecoverable "concurrent map read and map write".
+	<-done
+	<-summaryDone
 	state.Save(statePath)
 	logInfo("state saved, exiting")
 }
