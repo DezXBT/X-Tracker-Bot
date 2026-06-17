@@ -82,6 +82,10 @@ type User struct {
 	Description     string `json:"description"`
 	FollowersCount  int    `json:"followersCount"`
 	ProfileImageURL string `json:"profileImageUrl"`
+	// CreatedAt is X's legacy account-creation timestamp, e.g.
+	// "Wed Oct 10 20:19:24 +0000 2018". Used to compute account age for the
+	// summary "fresh account" marker. Empty when unavailable.
+	CreatedAt string `json:"createdAt"`
 }
 
 type PaginatedResult struct {
@@ -349,6 +353,7 @@ func parseUser(result map[string]interface{}) (*User, error) {
 		Description:     getString(legacy, "description"),
 		FollowersCount:  getInt(legacy, "followers_count"),
 		ProfileImageURL: getString(legacy, "profile_image_url_https"),
+		CreatedAt:       getString(legacy, "created_at"),
 	}
 	if id, ok := result["rest_id"].(string); ok {
 		user.RestID = id

@@ -44,6 +44,54 @@ type DiscordConfig struct {
 	// SummaryShowBio toggles showing each target's latest bio in the summary
 	// (default true).
 	SummaryShowBio *bool `yaml:"summary_show_bio,omitempty"`
+
+	// ── Signal markers (all default-on unless noted) ──────────────────────────
+	// SummaryShowHeat toggles the 🔥 consensus heat marker (default true).
+	SummaryShowHeat *bool `yaml:"summary_show_heat,omitempty"`
+	// SummaryBurstMin is how many distinct watchers within SummaryBurstWindow
+	// constitute a burst (default 3). SummaryBurstWindow is the span (default 30m).
+	SummaryBurstMin    int    `yaml:"summary_burst_min,omitempty"`
+	SummaryBurstWindow string `yaml:"summary_burst_window,omitempty"`
+	// SummaryShowAge toggles the account-age marker (default true).
+	SummaryShowAge *bool `yaml:"summary_show_age,omitempty"`
+	// SummaryFreshMaxDays flags accounts younger than this many days as fresh
+	// (default 30; <=0 disables the ✨ fresh marker).
+	SummaryFreshMaxDays int `yaml:"summary_fresh_max_days,omitempty"`
+	// SummaryShowContract toggles bio contract-address detection + chart link
+	// (default true).
+	SummaryShowContract *bool `yaml:"summary_show_contract,omitempty"`
+	// SummaryShowLinks toggles the inline DexScreener/.first action links
+	// (default true).
+	SummaryShowLinks *bool `yaml:"summary_show_links,omitempty"`
+	// SummaryShowMutual toggles the ⭐ recurring-target marker (default true).
+	SummaryShowMutual *bool `yaml:"summary_show_mutual,omitempty"`
+	// SummaryMuteCategories lists categories to exclude from the summary entirely
+	// (case-insensitive; e.g. ["Meme","NFT"]). Empty means mute nothing.
+	SummaryMuteCategories []string `yaml:"summary_mute_categories,omitempty"`
+
+	// ── Threshold instant-alert ──────────────────────────────────────────────
+	// ThresholdAlertEnabled turns on the separate instant alert fired when a
+	// target crosses ThresholdAlertWatchers distinct watchers inside
+	// ThresholdAlertWindow (default off).
+	ThresholdAlertEnabled  *bool  `yaml:"threshold_alert_enabled,omitempty"`
+	ThresholdAlertWatchers int    `yaml:"threshold_alert_watchers,omitempty"`
+	ThresholdAlertWindow   string `yaml:"threshold_alert_window,omitempty"`
+	// ThresholdAlertWebhook is where instant alerts go; falls back to
+	// SummaryWebhook when empty.
+	ThresholdAlertWebhook string `yaml:"threshold_alert_webhook,omitempty"`
+	// ThresholdAlertMention is an optional Discord mention prepended to the alert
+	// (e.g. "<@123>" or "@here") so it pings.
+	ThresholdAlertMention string `yaml:"threshold_alert_mention,omitempty"`
+
+	// ── Daily digest ──────────────────────────────────────────────────────────
+	// DigestEnabled turns on a once-daily top-N recap (default off).
+	DigestEnabled *bool `yaml:"digest_enabled,omitempty"`
+	// DigestInterval is how often the digest runs (default 24h).
+	DigestInterval string `yaml:"digest_interval,omitempty"`
+	// DigestTopN caps how many targets the digest lists (default 10).
+	DigestTopN int `yaml:"digest_top_n,omitempty"`
+	// DigestWebhook is where the digest goes; falls back to SummaryWebhook.
+	DigestWebhook string `yaml:"digest_webhook,omitempty"`
 }
 
 type OpenRouterConfig struct {
@@ -154,6 +202,148 @@ func (c *Config) SummaryShowBio() bool {
 		return true
 	}
 	return *c.Discord.SummaryShowBio
+}
+
+// boolOrTrue returns *p when set, else true (shared default-on helper).
+func boolOrTrue(p *bool) bool {
+	if p == nil {
+		return true
+	}
+	return *p
+}
+
+// SummaryShowHeat reports whether the 🔥 consensus heat marker is shown
+// (default true).
+func (c *Config) SummaryShowHeat() bool { return boolOrTrue(c.Discord.SummaryShowHeat) }
+
+// SummaryShowAge reports whether the account-age marker is shown (default true).
+func (c *Config) SummaryShowAge() bool { return boolOrTrue(c.Discord.SummaryShowAge) }
+
+// SummaryShowContract reports whether bio contract detection is shown
+// (default true).
+func (c *Config) SummaryShowContract() bool { return boolOrTrue(c.Discord.SummaryShowContract) }
+
+// SummaryShowLinks reports whether inline action links are shown (default true).
+func (c *Config) SummaryShowLinks() bool { return boolOrTrue(c.Discord.SummaryShowLinks) }
+
+// SummaryShowMutual reports whether the ⭐ recurring-target marker is shown
+// (default true).
+func (c *Config) SummaryShowMutual() bool { return boolOrTrue(c.Discord.SummaryShowMutual) }
+
+// SummaryBurstMinValue is the distinct-watcher count that constitutes a burst
+// (default 3, floor 2).
+func (c *Config) SummaryBurstMinValue() int {
+	if c.Discord.SummaryBurstMin < 2 {
+		return 3
+	}
+	return c.Discord.SummaryBurstMin
+}
+
+// SummaryBurstWindowDuration is the span within which SummaryBurstMin follows
+// count as a burst (default 30m).
+func (c *Config) SummaryBurstWindowDuration() time.Duration {
+	d, err := time.ParseDuration(c.Discord.SummaryBurstWindow)
+	if err != nil || d <= 0 {
+		return 30 * time.Minute
+	}
+	return d
+}
+
+// SummaryFreshMaxDaysValue is the account-age ceiling (days) for the ✨ fresh
+// marker (default 30; <=0 disables — preserved so the user can turn it off).
+func (c *Config) SummaryFreshMaxDaysValue() int {
+	// A negative value explicitly disables; 0 (unset) falls back to the default.
+	if c.Discord.SummaryFreshMaxDays < 0 {
+		return 0
+	}
+	if c.Discord.SummaryFreshMaxDays == 0 {
+		return 30
+	}
+	return c.Discord.SummaryFreshMaxDays
+}
+
+// SummaryMuteSet returns the set of muted category names, lower-cased for
+// case-insensitive matching.
+func (c *Config) SummaryMuteSet() map[string]bool {
+	set := make(map[string]bool, len(c.Discord.SummaryMuteCategories))
+	for _, name := range c.Discord.SummaryMuteCategories {
+		n := strings.ToLower(strings.TrimSpace(name))
+		if n != "" {
+			set[n] = true
+		}
+	}
+	return set
+}
+
+// ThresholdAlertEnabled reports whether the instant threshold alert is on
+// (default false).
+func (c *Config) ThresholdAlertEnabled() bool {
+	if c.Discord.ThresholdAlertEnabled == nil {
+		return false
+	}
+	return *c.Discord.ThresholdAlertEnabled
+}
+
+// ThresholdAlertWatchersValue is the distinct-watcher count that triggers an
+// instant alert (default 3, floor 2).
+func (c *Config) ThresholdAlertWatchersValue() int {
+	if c.Discord.ThresholdAlertWatchers < 2 {
+		return 3
+	}
+	return c.Discord.ThresholdAlertWatchers
+}
+
+// ThresholdAlertWindowDuration is the span the threshold-watcher count must be
+// reached within (default 30m).
+func (c *Config) ThresholdAlertWindowDuration() time.Duration {
+	d, err := time.ParseDuration(c.Discord.ThresholdAlertWindow)
+	if err != nil || d <= 0 {
+		return 30 * time.Minute
+	}
+	return d
+}
+
+// ThresholdAlertWebhookURL is where instant alerts go, falling back to the
+// summary webhook when unset.
+func (c *Config) ThresholdAlertWebhookURL() string {
+	if c.Discord.ThresholdAlertWebhook != "" {
+		return c.Discord.ThresholdAlertWebhook
+	}
+	return c.Discord.SummaryWebhook
+}
+
+// DigestEnabled reports whether the daily digest is on (default false).
+func (c *Config) DigestEnabled() bool {
+	if c.Discord.DigestEnabled == nil {
+		return false
+	}
+	return *c.Discord.DigestEnabled
+}
+
+// DigestIntervalDuration is how often the digest runs (default 24h).
+func (c *Config) DigestIntervalDuration() time.Duration {
+	d, err := time.ParseDuration(c.Discord.DigestInterval)
+	if err != nil || d <= 0 {
+		return 24 * time.Hour
+	}
+	return d
+}
+
+// DigestTopNValue caps how many targets the digest lists (default 10, floor 1).
+func (c *Config) DigestTopNValue() int {
+	if c.Discord.DigestTopN < 1 {
+		return 10
+	}
+	return c.Discord.DigestTopN
+}
+
+// DigestWebhookURL is where the digest goes, falling back to the summary
+// webhook when unset.
+func (c *Config) DigestWebhookURL() string {
+	if c.Discord.DigestWebhook != "" {
+		return c.Discord.DigestWebhook
+	}
+	return c.Discord.SummaryWebhook
 }
 
 // SummaryMaxFollowersValue is the follower ceiling for the summary filter

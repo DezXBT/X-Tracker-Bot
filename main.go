@@ -139,6 +139,9 @@ func main() {
 		tracker.RunSummaryLoop(ctx)
 	}()
 
+	// Daily digest loop (no-op unless digest_enabled)
+	go tracker.RunDigestLoop(ctx)
+
 	// Main loop
 	go func() {
 		defer close(done)

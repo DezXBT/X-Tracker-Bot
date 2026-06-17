@@ -44,7 +44,8 @@ type webhookFooter struct {
 }
 
 type webhookPayload struct {
-	Embeds []webhookEmbed `json:"embeds"`
+	Content string         `json:"content,omitempty"`
+	Embeds  []webhookEmbed `json:"embeds"`
 }
 
 // SendFollowAlert posts a raw follow alert to all configured webhooks.
@@ -111,24 +112,7 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 		}
 		var b strings.Builder
 		for _, t := range c.Targets {
-			fmt.Fprintf(&b, "`%d×` [@%s](https://x.com/%s)", t.Count, t.Handle, t.Handle)
-			if t.Followers > 0 {
-				fmt.Fprintf(&b, " · 👥 %s", formatCompact(t.Followers))
-			}
-			if t.SmartFollowers > 0 {
-				fmt.Fprintf(&b, " · 🧠 %s", formatCompact(t.SmartFollowers))
-			}
-			if t.UsernameChanged {
-				if t.OldUsername != "" {
-					fmt.Fprintf(&b, " · ✏️ ex @%s", t.OldUsername)
-				} else {
-					b.WriteString(" · ✏️")
-				}
-			}
-			if bio := cleanBio(t.Bio); bio != "" {
-				// Latest bio on its own indented, italic line under the account.
-				fmt.Fprintf(&b, "\n> _%s_", truncateRunes(bio, 140))
-			}
+			renderTarget(&b, t)
 			b.WriteByte('\n')
 		}
 		val := strings.TrimRight(b.String(), "\n")
@@ -166,6 +150,158 @@ func (dw *DiscordWebhook) SendSummary(webhookURL string, cats []SummaryCategory,
 		return nil, err
 	}
 	return included, nil
+}
+
+// renderTarget writes one summary line (plus optional bio sub-line) for a
+// target, including all the fast-scan signal markers. Order is tuned so the
+// strongest urgency cues (heat, burst, fresh, mutual) sit closest to the handle.
+func renderTarget(b *strings.Builder, t SummaryTarget) {
+	// Heat marker first — it's the loudest "look here" cue.
+	if t.HeatMarker != "" {
+		fmt.Fprintf(b, "%s ", t.HeatMarker)
+	}
+	fmt.Fprintf(b, "`%d×` [@%s](https://x.com/%s)", t.Count, t.Handle, t.Handle)
+
+	if t.IsBurst {
+		fmt.Fprintf(b, " · ⚡%s", humanizeSpan(t.BurstSpan))
+	}
+	if t.IsFresh {
+		if t.AgeLabel != "" {
+			fmt.Fprintf(b, " · ✨%s", t.AgeLabel)
+		} else {
+			b.WriteString(" · ✨")
+		}
+	} else if t.AgeLabel != "" {
+		fmt.Fprintf(b, " · 🕯️%s", t.AgeLabel)
+	}
+	if t.Mutual {
+		b.WriteString(" · ⭐")
+	}
+	if t.Followers > 0 {
+		fmt.Fprintf(b, " · 👥 %s", formatCompact(t.Followers))
+	}
+	if t.SmartFollowers > 0 {
+		fmt.Fprintf(b, " · 🧠 %s", formatCompact(t.SmartFollowers))
+	}
+	if t.UsernameChanged {
+		if t.OldUsername != "" {
+			fmt.Fprintf(b, " · ✏️ ex @%s", t.OldUsername)
+		} else {
+			b.WriteString(" · ✏️")
+		}
+	}
+	// Action links on their own line so the main line stays scannable.
+	if len(t.ActionLinks) > 0 {
+		fmt.Fprintf(b, "\n  %s", strings.Join(t.ActionLinks, " · "))
+	}
+	if bio := cleanBio(t.Bio); bio != "" {
+		// Latest bio on its own indented, italic line under the account.
+		fmt.Fprintf(b, "\n> _%s_", truncateRunes(bio, 140))
+	}
+}
+
+// SendInstantAlert posts a high-urgency alert for a single target that crossed
+// the watcher threshold inside the alert window. mention is prepended (outside
+// the embed) so Discord actually pings.
+func (dw *DiscordWebhook) SendInstantAlert(webhookURL, mention string, t SummaryTarget, category string, window time.Duration, loc *time.Location) error {
+	if webhookURL == "" {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "**%d watchers** followed [@%s](https://x.com/%s)", t.Count, t.Handle, t.Handle)
+	if t.IsBurst {
+		fmt.Fprintf(&b, " in just **%s**", humanizeSpan(t.BurstSpan))
+	} else {
+		fmt.Fprintf(&b, " within %s", humanizeDuration(window))
+	}
+	if t.IsFresh && t.AgeLabel != "" {
+		fmt.Fprintf(&b, "\n✨ Fresh account · %s old", t.AgeLabel)
+	}
+	if t.Followers > 0 {
+		fmt.Fprintf(&b, "\n👥 %s followers", formatCompact(t.Followers))
+	}
+	if len(t.ActionLinks) > 0 {
+		fmt.Fprintf(&b, "\n%s", strings.Join(t.ActionLinks, " · "))
+	}
+	if bio := cleanBio(t.Bio); bio != "" {
+		fmt.Fprintf(&b, "\n> _%s_", truncateRunes(bio, 180))
+	}
+
+	embed := webhookEmbed{
+		Title:       fmt.Sprintf("🚨 HOT: %s", category),
+		Color:       0xFF3B30, // red for urgency
+		Description: b.String(),
+		Footer: &webhookFooter{
+			Text: fmt.Sprintf("X-Tracker-Bot · instant alert | %s WIB", time.Now().In(loc).Format("02/01/2006, 15:04:05")),
+		},
+	}
+	payload := webhookPayload{Embeds: []webhookEmbed{embed}}
+	if mention != "" {
+		payload.Content = mention
+	}
+	return dw.postOne(webhookURL, payload)
+}
+
+// SendDigest posts a daily top-N recap: a flat, ranked leaderboard of the most-
+// followed targets across the digest window, regardless of category.
+func (dw *DiscordWebhook) SendDigest(webhookURL string, targets []SummaryTarget, window time.Duration, loc *time.Location) error {
+	if webhookURL == "" || len(targets) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	for i, t := range targets {
+		medal := digestRank(i)
+		fmt.Fprintf(&b, "%s `%d×` [@%s](https://x.com/%s)", medal, t.Count, t.Handle, t.Handle)
+		if t.IsFresh && t.AgeLabel != "" {
+			fmt.Fprintf(&b, " · ✨%s", t.AgeLabel)
+		}
+		if t.Followers > 0 {
+			fmt.Fprintf(&b, " · 👥 %s", formatCompact(t.Followers))
+		}
+		b.WriteByte('\n')
+	}
+	embed := webhookEmbed{
+		Title:       fmt.Sprintf("🗓️ Daily Digest · Top %d · Last %s", len(targets), humanizeDuration(window)),
+		Color:       0x34C759, // green
+		Description: strings.TrimRight(b.String(), "\n"),
+		Footer: &webhookFooter{
+			Text: fmt.Sprintf("X-Tracker-Bot · digest | %s WIB", time.Now().In(loc).Format("02/01/2006, 15:04:05")),
+		},
+	}
+	return dw.postOne(webhookURL, webhookPayload{Embeds: []webhookEmbed{embed}})
+}
+
+// digestRank returns a medal for the top 3 ranks, else a numbered bullet.
+func digestRank(i int) string {
+	switch i {
+	case 0:
+		return "🥇"
+	case 1:
+		return "🥈"
+	case 2:
+		return "🥉"
+	default:
+		return fmt.Sprintf("`%2d`", i+1)
+	}
+}
+
+// humanizeSpan renders a short burst span compactly: "8m", "45s", "1h2m".
+func humanizeSpan(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	h := int(d / time.Hour)
+	m := int((d % time.Hour) / time.Minute)
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh%dm", h, m)
 }
 
 // categoryEmoji returns a small icon for a category so the summary scans faster.
@@ -239,6 +375,12 @@ func humanizeDuration(d time.Duration) string {
 		}
 	}
 	return d.String()
+}
+
+// postOne posts a payload to a single webhook URL, returning an error on a
+// transport failure or a non-2xx/204 status.
+func (dw *DiscordWebhook) postOne(url string, payload webhookPayload) error {
+	return dw.postToAll([]string{url}, payload)
 }
 
 func (dw *DiscordWebhook) postToAll(urls []string, payload webhookPayload) error {

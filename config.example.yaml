@@ -50,6 +50,56 @@ discord:
   # Show each account's latest bio as an indented line under it in the summary.
   summary_show_bio: true                 # 📝 set false to hide bios
 
+  # ── Fast-scan signal markers (all default ON; set false to hide) ───────────
+  # 🔥 Consensus heat: more distinct watchlist accounts following the same
+  # target in one window = hotter. 2 → 🔥, 3-4 → 🔥🔥, 5+ → 🔥🔥🔥. Shown next
+  # to the handle so the strongest signals jump out first.
+  summary_show_heat: true
+  # ⚡ Burst detection: flags a target when burst_min distinct watchers followed
+  # it inside burst_window — a tight cluster usually means it's being shared in
+  # alpha groups right now. Shows the span, e.g. "⚡8m".
+  summary_burst_min: 3        # distinct watchers (min 2)
+  summary_burst_window: 30m   # within this span
+  # ✨/🕯️ Account age: fresh accounts (✨) that already attract watchlist follows
+  # are early-opportunity signals; older accounts get 🕯️. Set fresh_max_days to
+  # a negative number to disable the ✨ marker entirely.
+  summary_show_age: true
+  summary_fresh_max_days: 30  # accounts <= this many days old are "fresh"
+  # 📈 Contract auto-detect: scans each bio for an EVM (0x…) or Solana address
+  # and, when found, adds a DexScreener chart link to the action links.
+  summary_show_contract: true
+  # Action links shown under each target: a copy-paste `.first @handle` command
+  # and (when a contract is detected) a 📈 chart link.
+  summary_show_links: true
+  # ⭐ Recurring marker: flags a target that appeared in a previous summary
+  # window. With the default 30-day dedup TTL recurring targets are usually
+  # suppressed; lower summary_dedup_ttl to actually see the ⭐ marker.
+  summary_show_mutual: true
+  # Mute categories entirely (case-insensitive). Muted categories never appear
+  # in the summary, digest, or instant alerts. Empty = mute nothing.
+  summary_mute_categories: []   # e.g. ["Meme", "NFT"]
+
+  # ── Threshold instant-alert (separate, high-urgency ping) ──────────────────
+  # When a target crosses threshold_alert_watchers distinct watchers inside
+  # threshold_alert_window, fire an immediate 🚨 alert instead of waiting for the
+  # next summary tick. Off by default. Deduped: a target alerts at most once per
+  # window. Falls back to summary_webhook when threshold_alert_webhook is blank.
+  threshold_alert_enabled: false
+  threshold_alert_watchers: 3       # distinct watchers to trigger (min 2)
+  threshold_alert_window: 30m       # within this span
+  threshold_alert_webhook: ""       # blank → use summary_webhook
+  threshold_alert_mention: ""       # e.g. "<@123456789>" or "@here" to ping
+
+  # ── Daily digest (once-a-day top-N recap) ──────────────────────────────────
+  # A standalone leaderboard of the most-followed targets across the digest
+  # window — read it once a day instead of watching every hourly summary. Off by
+  # default. Does not dedup against the hourly summary. Falls back to
+  # summary_webhook when digest_webhook is blank.
+  digest_enabled: false
+  digest_interval: 24h
+  digest_top_n: 10
+  digest_webhook: ""                # blank → use summary_webhook
+
 categorization:
   # Set false to disable categorization (raw alerts still work).
   enabled: true

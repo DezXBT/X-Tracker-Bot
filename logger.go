@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	logMu      sync.Mutex
-	logLevel   = "info"
+	logMu       sync.Mutex
+	logLevel    = "info"
 	logTimezone *time.Location
 )
 
@@ -35,7 +35,13 @@ func logMsg(level, format string, args ...interface{}) {
 	}
 	logMu.Lock()
 	defer logMu.Unlock()
-	ts := time.Now().In(logTimezone).Format("2006-01-02 15:04:05")
+	loc := logTimezone
+	if loc == nil {
+		// Logger not initialised (e.g. in tests) — fall back to UTC instead of
+		// panicking inside time.Time.In on a nil Location.
+		loc = time.UTC
+	}
+	ts := time.Now().In(loc).Format("2006-01-02 15:04:05")
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stderr, "[%s] [%s] %s\n", ts, level, msg)
 }

@@ -22,6 +22,9 @@ type State struct {
 	CategoryCacheVersion int                      `json:"categoryCacheVersion"`
 	SummarizedTargets    map[string]int64         `json:"summarizedTargets"`
 	FrontrunCache        map[string]FrontrunEntry `json:"frontrunCache"`
+	// AlertedTargets records when a target last fired an instant threshold alert,
+	// so the same surge isn't alerted repeatedly within the alert TTL.
+	AlertedTargets map[string]int64 `json:"alertedTargets"`
 }
 
 // CategoryEntry is a cached categorization result for a single handle.
@@ -49,6 +52,9 @@ type Event struct {
 	FollowersCount  *int   `json:"followersCount"`
 	ProfileImageURL string `json:"profileImageUrl"`
 	TargetURL       string `json:"targetUrl"`
+	// CreatedAt is the target's X account-creation timestamp (legacy format),
+	// carried so the summary can compute account age without a re-fetch.
+	CreatedAt string `json:"createdAt,omitempty"`
 }
 
 func NewState() *State {
@@ -58,6 +64,7 @@ func NewState() *State {
 		CategoryCache:     make(map[string]CategoryEntry),
 		SummarizedTargets: make(map[string]int64),
 		FrontrunCache:     make(map[string]FrontrunEntry),
+		AlertedTargets:    make(map[string]int64),
 	}
 }
 
@@ -82,6 +89,9 @@ func LoadState(statePath string) *State {
 	}
 	if s.FrontrunCache == nil {
 		s.FrontrunCache = make(map[string]FrontrunEntry)
+	}
+	if s.AlertedTargets == nil {
+		s.AlertedTargets = make(map[string]int64)
 	}
 	return s
 }
@@ -211,6 +221,31 @@ func (s *State) PruneSummarized(ttl time.Duration) {
 	}
 }
 
+// WasAlerted reports whether a target already fired an instant threshold alert
+// within ttl (so the same surge isn't re-alerted every scan).
+func (s *State) WasAlerted(target string, ttl time.Duration) bool {
+	ts, ok := s.AlertedTargets[strings.ToLower(target)]
+	if !ok {
+		return false
+	}
+	return time.Now().UnixMilli()-ts <= ttl.Milliseconds()
+}
+
+// MarkAlerted records that a target fired an instant threshold alert.
+func (s *State) MarkAlerted(target string) {
+	s.AlertedTargets[strings.ToLower(target)] = time.Now().UnixMilli()
+}
+
+// PruneAlerted drops alerted-target entries older than ttl.
+func (s *State) PruneAlerted(ttl time.Duration) {
+	cutoff := time.Now().Add(-ttl).UnixMilli()
+	for k, ts := range s.AlertedTargets {
+		if ts < cutoff {
+			delete(s.AlertedTargets, k)
+		}
+	}
+}
+
 func AppendEvent(eventsPath string, event Event) error {
 	dir := filepath.Dir(eventsPath)
 	os.MkdirAll(dir, 0755)
@@ -229,7 +264,7 @@ func AppendEvent(eventsPath string, event Event) error {
 	return err
 }
 
-func MakeEvent(watcher, targetScreen, bio, name, category string, followersCount int, profileImageURL string) Event {
+func MakeEvent(watcher, targetScreen, bio, name, category string, followersCount int, profileImageURL, createdAt string) Event {
 	ev := Event{
 		Ts:              time.Now().UTC().Format(time.RFC3339),
 		Watcher:         watcher,
@@ -240,6 +275,7 @@ func MakeEvent(watcher, targetScreen, bio, name, category string, followersCount
 		Category:        category,
 		ProfileImageURL: profileImageURL,
 		TargetURL:       fmt.Sprintf("https://x.com/%s", targetScreen),
+		CreatedAt:       createdAt,
 	}
 	if followersCount > 0 {
 		ev.FollowersCount = &followersCount
