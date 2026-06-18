@@ -127,22 +127,19 @@ func TestFilterMutedCategories(t *testing.T) {
 }
 
 func TestBuildActionLinks(t *testing.T) {
-	// With contract -> chart link + .first command.
+	// With contract -> chart link only.
 	links := buildActionLinks("proj", "0xabc")
-	if len(links) != 2 {
-		t.Fatalf("expected 2 links with contract, got %d: %v", len(links), links)
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link with contract, got %d: %v", len(links), links)
 	}
 	if links[0] != "[📈 chart](https://dexscreener.com/search?q=0xabc)" {
 		t.Errorf("unexpected chart link: %q", links[0])
 	}
-	if links[1] != "`.first @proj`" {
-		t.Errorf("unexpected first command: %q", links[1])
-	}
 
-	// Without contract -> only .first.
+	// Without contract -> no links.
 	links = buildActionLinks("proj", "")
-	if len(links) != 1 || links[0] != "`.first @proj`" {
-		t.Errorf("expected only .first link, got %v", links)
+	if len(links) != 0 {
+		t.Errorf("expected no links without contract, got %v", links)
 	}
 
 	// No handle -> empty.

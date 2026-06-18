@@ -926,9 +926,6 @@ func buildActionLinks(handle, contractAddr string) []string {
 			links = append(links, fmt.Sprintf("[📈 chart](%s)", u))
 		}
 	}
-	if handle != "" {
-		links = append(links, fmt.Sprintf("`.first @%s`", handle))
-	}
 	return links
 }
 
